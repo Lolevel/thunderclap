@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  /* Primary Colors */
+  --color-primary: #8B5CF6;
+  --color-primary-light: #A78BFA;
+  --color-primary-dark: #7C3AED;
+
+  /* Secondary Colors */
+  --color-secondary: #06B6D4;
+  --color-secondary-light: #22D3EE;
+  --color-secondary-dark: #0891B2;
+
+  /* Accent Colors */
+  --color-accent: #A78BFA;
+  --color-accent-light: #C4B5FD;
+  --color-accent-dark: #8B5CF6;
+
+  /* Semantic Colors */
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+  --color-info: #64748B;
+
+  /* Background Colors */
+  --color-background: #1A1F2E;
+  --color-background-light: #242B3D;
+
+  /* Surface Colors */
+  --color-surface: #242B3D;
+  --color-surface-elevated: #2D3548;
+  --color-surface-hover: #343D52;
+
+  /* Text Colors */
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #94A3B8;
+
+  /* Border Colors */
+  --color-border: rgb(71 85 105 / 0.3);
+  --color-border-light: rgb(100 116 139 / 0.2);
+
+  /* Font Families */
+  --font-family-sans: Inter, system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
+
+  /* Border Radius */
+  --radius-xl: 12px;
+  --radius-lg: 8px;
+  --radius-md: 6px;
+
+  /* Shadows */
+  --shadow-glow: 0 0 20px rgb(139 92 246 / 0.3);
+  --shadow-glow-sm: 0 0 10px rgb(139 92 246 / 0.2);
+  --shadow-card: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -1px rgb(0 0 0 / 0.2);
+
+  /* Animations */
+  --animate-fade-in: fade-in 0.2s ease-in-out;
+  --animate-slide-up: slide-up 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    @apply bg-background text-text-primary font-sans antialiased;
+    margin: 0;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-elevated rounded-lg;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-hover;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply focus:outline-none focus-visible:outline-none;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-dark;
+    @apply shadow-glow-sm hover:shadow-glow;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-elevated text-text-primary hover:bg-surface-hover;
+    border: 1px solid var(--color-border);
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-text-secondary hover:bg-surface-elevated hover:text-text-primary;
+  }
+
+  .card {
+    @apply bg-surface-elevated rounded-xl p-6 shadow-card;
+    border: 1px solid rgb(71 85 105 / 0.15);
+  }
+
+  .input {
+    @apply bg-surface text-text-primary px-4 py-2 rounded-lg;
+    @apply focus:outline-none;
+    @apply transition-all duration-200;
+    border: 1px solid var(--color-border);
+  }
+
+  .input:focus {
+    border-color: var(--color-border);
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply bg-success/10 text-success border border-success/20;
+  }
+
+  .badge-error {
+    @apply bg-error/10 text-error border border-error/20;
+  }
+
+  .badge-warning {
+    @apply bg-warning/10 text-warning border border-warning/20;
+  }
+
+  .badge-info {
+    @apply bg-info/10 text-info border border-info/20;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+}
