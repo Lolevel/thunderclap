@@ -6,6 +6,7 @@
 
 # teams
 
+- der "erstes team importieren" button wenn noch kein team da ist. der funktioniert nicht und hat keine funktion
 - übersicht soll das wichtigste auf einem punkt sein: wie viele PL games mit w/l und winrate, top 5 gepickten champions vom team und die durchschnittselo des teams, spieleranzahl und das wars für die übersicht
 - bei dem spielertab soll erstmal die rolle utility zu support umgenannt werden
 - generell sollen die rollen Top, Jungle, Mid, Bot, Support heißen
