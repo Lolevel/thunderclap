@@ -1,6 +1,7 @@
 """
 Team routes
 """
+
 from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import Team, TeamRoster, Player
@@ -8,10 +9,10 @@ from app.services import RiotAPIClient, MatchFetcher
 from app.utils import parse_opgg_url
 from datetime import datetime
 
-bp = Blueprint('teams', __name__, url_prefix='/api/teams')
+bp = Blueprint("teams", __name__, url_prefix="/api/teams")
 
 
-@bp.route('/import', methods=['POST'])
+@bp.route("/import", methods=["POST"])
 def import_team():
     """
     Import team via OP.GG URL
@@ -32,19 +33,21 @@ def import_team():
     """
     data = request.get_json()
 
-    if not data or 'opgg_url' not in data:
-        return jsonify({'error': 'opgg_url is required'}), 400
+    if not data or "opgg_url" not in data:
+        return jsonify({"error": "opgg_url is required"}), 400
 
-    opgg_url = data['opgg_url']
-    team_name = data.get('team_name')
-    team_tag = data.get('team_tag')
+    opgg_url = data["opgg_url"]
+    team_name = data.get("team_name")
+    team_tag = data.get("team_tag")
 
     # Parse OP.GG URL
     summoner_names = parse_opgg_url(opgg_url)
     if not summoner_names:
-        return jsonify({'error': 'Invalid OP.GG URL'}), 400
+        return jsonify({"error": "Invalid OP.GG URL"}), 400
 
-    current_app.logger.info(f'Importing team with {len(summoner_names)} players: {summoner_names}')
+    current_app.logger.info(
+        f"Importing team with {len(summoner_names)} players: {summoner_names}"
+    )
 
     try:
         # Initialize Riot API client
@@ -53,46 +56,56 @@ def import_team():
         # Fetch player data
         players = []
         for riot_id in summoner_names:
-            current_app.logger.info(f'Fetching data for {riot_id}')
+            current_app.logger.info(f"Fetching data for {riot_id}")
 
             # Parse Riot ID (gameName#tagLine)
-            if '#' in riot_id:
-                game_name, tag_line = riot_id.split('#', 1)
+            if "#" in riot_id:
+                game_name, tag_line = riot_id.split("#", 1)
             else:
                 # Fallback: assume EUW tagline if not provided
                 game_name = riot_id
-                tag_line = 'EUW'
-                current_app.logger.warning(f'No tagline found for {riot_id}, assuming #{tag_line}')
+                tag_line = "EUW"
+                current_app.logger.warning(
+                    f"No tagline found for {riot_id}, assuming #{tag_line}"
+                )
 
             # Step 1: Get PUUID from Riot ID using ACCOUNT-V1
             account_data = riot_client.get_account_by_riot_id(game_name, tag_line)
             if not account_data:
-                current_app.logger.warning(f'Account not found: {game_name}#{tag_line}')
+                current_app.logger.warning(f"Account not found: {game_name}#{tag_line}")
                 continue
 
-            puuid = account_data.get('puuid')
+            puuid = account_data.get("puuid")
             if not puuid:
-                current_app.logger.error(f'No PUUID in account data for {game_name}#{tag_line}')
+                current_app.logger.error(
+                    f"No PUUID in account data for {game_name}#{tag_line}"
+                )
                 continue
 
             # Step 2: Get summoner data from PUUID using SUMMONER-V4
             summoner_data = riot_client.get_summoner_by_puuid(puuid)
-            current_app.logger.info(f'Summoner data retrieved for {game_name}#{tag_line}: {summoner_data}')
+            current_app.logger.info(
+                f"Summoner data retrieved for {game_name}#{tag_line}: {summoner_data}"
+            )
             if not summoner_data:
-                current_app.logger.warning(f'Summoner not found for PUUID: {puuid}')
+                current_app.logger.warning(f"Summoner not found for PUUID: {puuid}")
                 continue
 
             # Extract name from account_data (ACCOUNT-V1 has gameName, SUMMONER-V4 doesn't have name)
-            display_name = f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
+            display_name = (
+                f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
+            )
 
             # Check if player already exists
             player = Player.query.filter_by(puuid=puuid).first()
 
             # Note: summoner_data.get('id') returns None due to Riot API bug (Issue #1092, Aug 2025)
             # The by-puuid endpoint doesn't return the 'id' field
-            summoner_id = summoner_data.get('id')
+            summoner_id = summoner_data.get("id")
             if not summoner_id:
-                current_app.logger.warning(f'Summoner ID missing for {display_name} (Riot API bug)')
+                current_app.logger.warning(
+                    f"Summoner ID missing for {display_name} (Riot API bug)"
+                )
 
             if not player:
                 # Create new player
@@ -100,40 +113,48 @@ def import_team():
                     summoner_name=display_name,
                     summoner_id=summoner_id,  # Will be None due to API bug
                     puuid=puuid,
-                    summoner_level=summoner_data.get('summonerLevel'),
-                    profile_icon_id=summoner_data.get('profileIconId'),
-                    region=current_app.config['RIOT_PLATFORM'],
-                    last_active=datetime.utcnow()
+                    summoner_level=summoner_data.get("summonerLevel"),
+                    profile_icon_id=summoner_data.get("profileIconId"),
+                    region=current_app.config["RIOT_PLATFORM"],
+                    last_active=datetime.utcnow(),
                 )
                 db.session.add(player)
-                current_app.logger.info(f'Created new player: {display_name} (PUUID: {puuid})')
+                current_app.logger.info(
+                    f"Created new player: {display_name} (PUUID: {puuid})"
+                )
             else:
                 # Update existing player
                 player.summoner_name = display_name
                 if summoner_id:  # Only update if we have it
                     player.summoner_id = summoner_id
-                player.summoner_level = summoner_data.get('summonerLevel')
-                player.profile_icon_id = summoner_data.get('profileIconId')
+                player.summoner_level = summoner_data.get("summonerLevel")
+                player.profile_icon_id = summoner_data.get("profileIconId")
                 player.last_active = datetime.utcnow()
                 player.updated_at = datetime.utcnow()
-                current_app.logger.info(f'Updated existing player: {display_name} (PUUID: {puuid})')
+                current_app.logger.info(
+                    f"Updated existing player: {display_name} (PUUID: {puuid})"
+                )
 
             # Get ranked stats (only if we have summoner_id, which we don't due to API bug)
             if summoner_id:
                 league_entries = riot_client.get_league_entries(summoner_id)
                 if league_entries:
                     for entry in league_entries:
-                        if entry.get('queueType') == 'RANKED_SOLO_5x5':
-                            player.current_rank = f"{entry.get('tier')} {entry.get('rank')}"
-                            player.current_lp = entry.get('leaguePoints', 0)
+                        if entry.get("queueType") == "RANKED_SOLO_5x5":
+                            player.current_rank = (
+                                f"{entry.get('tier')} {entry.get('rank')}"
+                            )
+                            player.current_lp = entry.get("leaguePoints", 0)
                             break
             else:
-                current_app.logger.warning(f'Skipping ranked stats for {display_name} - no summoner_id available')
+                current_app.logger.warning(
+                    f"Skipping ranked stats for {display_name} - no summoner_id available"
+                )
 
             players.append(player)
 
         if not players:
-            return jsonify({'error': 'No valid summoners found'}), 404
+            return jsonify({"error": "No valid summoners found"}), 404
 
         # Commit players first to get their IDs
         db.session.commit()
@@ -142,11 +163,7 @@ def import_team():
         if not team_name:
             team_name = f"Team {summoner_names[0]}"  # Default name
 
-        team = Team(
-            name=team_name,
-            tag=team_tag,
-            opgg_url=opgg_url
-        )
+        team = Team(name=team_name, tag=team_tag, opgg_url=opgg_url)
         db.session.add(team)
         db.session.commit()
 
@@ -156,28 +173,35 @@ def import_team():
                 team_id=team.id,
                 player_id=player.id,
                 is_main_roster=True,
-                join_date=datetime.utcnow().date()
+                join_date=datetime.utcnow().date(),
             )
             db.session.add(roster_entry)
 
         db.session.commit()
 
-        current_app.logger.info(f'Team imported successfully: {team.name} with {len(players)} players')
+        current_app.logger.info(
+            f"Team imported successfully: {team.name} with {len(players)} players"
+        )
 
-        return jsonify({
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'players_imported': len(players),
-            'message': 'Team imported successfully'
-        }), 201
+        return (
+            jsonify(
+                {
+                    "team_id": str(team.id),
+                    "team_name": team.name,
+                    "players_imported": len(players),
+                    "message": "Team imported successfully",
+                }
+            ),
+            201,
+        )
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Error importing team: {str(e)}')
-        return jsonify({'error': 'Failed to import team', 'details': str(e)}), 500
+        current_app.logger.error(f"Error importing team: {str(e)}")
+        return jsonify({"error": "Failed to import team", "details": str(e)}), 500
 
 
-@bp.route('/<team_id>', methods=['GET'])
+@bp.route("/<team_id>", methods=["GET"])
 def get_team(team_id):
     """
     Get team details
@@ -192,12 +216,12 @@ def get_team(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     return jsonify(team.to_dict()), 200
 
 
-@bp.route('/<team_id>/roster', methods=['GET'])
+@bp.route("/<team_id>/roster", methods=["GET"])
 def get_team_roster(team_id):
     """
     Get team roster
@@ -218,30 +242,29 @@ def get_team_roster(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     # Get active roster (no leave_date)
-    roster_entries = TeamRoster.query.filter_by(
-        team_id=team_id
-    ).filter(
-        TeamRoster.leave_date.is_(None)
-    ).all()
+    roster_entries = (
+        TeamRoster.query.filter_by(team_id=team_id)
+        .filter(TeamRoster.leave_date.is_(None))
+        .all()
+    )
 
     roster = []
     for entry in roster_entries:
         player_data = entry.player.to_dict()
         roster_data = entry.to_dict()
-        roster_data['player'] = player_data
+        roster_data["player"] = player_data
         roster.append(roster_data)
 
-    return jsonify({
-        'team_id': str(team_id),
-        'team_name': team.name,
-        'roster': roster
-    }), 200
+    return (
+        jsonify({"team_id": str(team_id), "team_name": team.name, "roster": roster}),
+        200,
+    )
 
 
-@bp.route('/', methods=['GET'])
+@bp.route("/", methods=["GET"])
 def list_teams():
     """
     List all teams
@@ -258,21 +281,28 @@ def list_teams():
             "per_page": 20
         }
     """
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', current_app.config['ITEMS_PER_PAGE'], type=int)
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get(
+        "per_page", current_app.config["ITEMS_PER_PAGE"], type=int
+    )
 
     pagination = Team.query.paginate(page=page, per_page=per_page, error_out=False)
 
-    return jsonify({
-        'teams': [team.to_dict() for team in pagination.items],
-        'total': pagination.total,
-        'page': page,
-        'per_page': per_page,
-        'pages': pagination.pages
-    }), 200
+    return (
+        jsonify(
+            {
+                "teams": [team.to_dict() for team in pagination.items],
+                "total": pagination.total,
+                "page": page,
+                "per_page": per_page,
+                "pages": pagination.pages,
+            }
+        ),
+        200,
+    )
 
 
-@bp.route('/<team_id>/fetch-matches', methods=['POST'])
+@bp.route("/<team_id>/fetch-matches", methods=["POST"])
 def fetch_team_matches(team_id):
     """
     Fetch tournament matches for a team
@@ -291,12 +321,12 @@ def fetch_team_matches(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     data = request.get_json() or {}
-    count_per_player = data.get('count_per_player', 50)
+    count_per_player = data.get("count_per_player", 50)
 
-    current_app.logger.info(f'Fetching tournament matches for team {team.name}')
+    current_app.logger.info(f"Fetching tournament matches for team {team.name}")
 
     try:
         # Initialize services
@@ -304,23 +334,34 @@ def fetch_team_matches(team_id):
         match_fetcher = MatchFetcher(riot_client)
 
         # Fetch tournament games
-        matches_fetched = match_fetcher.fetch_tournament_games_only(team, count_per_player)
+        matches_fetched = match_fetcher.fetch_tournament_games_only(
+            team, count_per_player
+        )
 
-        current_app.logger.info(f'Fetched {matches_fetched} tournament matches for {team.name}')
+        current_app.logger.info(
+            f"Fetched {matches_fetched} tournament matches for {team.name}"
+        )
 
-        return jsonify({
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'matches_fetched': matches_fetched,
-            'message': f'Fetched {matches_fetched} tournament matches'
-        }), 200
+        return (
+            jsonify(
+                {
+                    "team_id": str(team.id),
+                    "team_name": team.name,
+                    "matches_fetched": matches_fetched,
+                    "message": f"Fetched {matches_fetched} tournament matches",
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
-        current_app.logger.error(f'Error fetching matches for team {team.name}: {str(e)}')
-        return jsonify({'error': 'Failed to fetch matches', 'details': str(e)}), 500
+        current_app.logger.error(
+            f"Error fetching matches for team {team.name}: {str(e)}"
+        )
+        return jsonify({"error": "Failed to fetch matches", "details": str(e)}), 500
 
 
-@bp.route('/<team_id>/calculate-stats', methods=['POST'])
+@bp.route("/<team_id>/calculate-stats", methods=["POST"])
 def calculate_team_stats(team_id):
     """
     Calculate statistics for a team
@@ -334,9 +375,9 @@ def calculate_team_stats(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
-    current_app.logger.info(f'Calculating stats for team {team.name}')
+    current_app.logger.info(f"Calculating stats for team {team.name}")
 
     try:
         from app.services.stats_calculator import StatsCalculator
@@ -344,21 +385,28 @@ def calculate_team_stats(team_id):
         stats_calculator = StatsCalculator()
         result = stats_calculator.calculate_all_stats_for_team(team)
 
-        return jsonify({
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'stats_calculated': result.get('stats_calculated', []),
-            'champions_updated': result.get('champions_updated', 0),
-            'players_processed': result.get('players_processed', 0),
-            'message': 'Stats calculated successfully'
-        }), 200
+        return (
+            jsonify(
+                {
+                    "team_id": str(team.id),
+                    "team_name": team.name,
+                    "stats_calculated": result.get("stats_calculated", []),
+                    "champions_updated": result.get("champions_updated", 0),
+                    "players_processed": result.get("players_processed", 0),
+                    "message": "Stats calculated successfully",
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
-        current_app.logger.error(f'Error calculating stats for team {team.name}: {str(e)}')
-        return jsonify({'error': 'Failed to calculate stats', 'details': str(e)}), 500
+        current_app.logger.error(
+            f"Error calculating stats for team {team.name}: {str(e)}"
+        )
+        return jsonify({"error": "Failed to calculate stats", "details": str(e)}), 500
 
 
-@bp.route('/<team_id>/link-matches', methods=['POST'])
+@bp.route("/<team_id>/link-matches", methods=["POST"])
 def link_team_matches(team_id):
     """
     Link matches to team by detecting which games had team players
@@ -372,9 +420,9 @@ def link_team_matches(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
-    current_app.logger.info(f'Linking matches for team {team.name}')
+    current_app.logger.info(f"Linking matches for team {team.name}")
 
     try:
         from app.models import Match, MatchParticipant
@@ -383,7 +431,7 @@ def link_team_matches(team_id):
         active_roster = [r for r in team.rosters if r.leave_date is None]
         team_player_ids = [r.player_id for r in active_roster]
 
-        current_app.logger.info(f'Team has {len(team_player_ids)} players')
+        current_app.logger.info(f"Team has {len(team_player_ids)} players")
 
         # Find matches where at least 3 team players participated
         matches_linked = 0
@@ -407,7 +455,7 @@ def link_team_matches(team_id):
                     elif team_won != participant.win:
                         # Conflicting win status - skip this match (shouldn't happen)
                         current_app.logger.warning(
-                            f'Match {match.match_id}: team players have conflicting win status'
+                            f"Match {match.match_id}: team players have conflicting win status"
                         )
                         team_participants = []
                         break
@@ -419,13 +467,13 @@ def link_team_matches(team_id):
                     match.winning_team_id = team.id
                     matches_linked += 1
                     current_app.logger.debug(
-                        f'Match {match.match_id}: team won with {len(team_participants)} players'
+                        f"Match {match.match_id}: team won with {len(team_participants)} players"
                     )
                 else:
                     match.losing_team_id = team.id
                     matches_linked += 1
                     current_app.logger.debug(
-                        f'Match {match.match_id}: team lost with {len(team_participants)} players'
+                        f"Match {match.match_id}: team lost with {len(team_participants)} players"
                     )
 
                 # Also set team_id on participants for easier queries
@@ -434,22 +482,29 @@ def link_team_matches(team_id):
 
         db.session.commit()
 
-        current_app.logger.info(f'Linked {matches_linked} matches for team {team.name}')
+        current_app.logger.info(f"Linked {matches_linked} matches for team {team.name}")
 
-        return jsonify({
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'matches_linked': matches_linked,
-            'message': f'Linked {matches_linked} matches'
-        }), 200
+        return (
+            jsonify(
+                {
+                    "team_id": str(team.id),
+                    "team_name": team.name,
+                    "matches_linked": matches_linked,
+                    "message": f"Linked {matches_linked} matches",
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Error linking matches for team {team.name}: {str(e)}')
-        return jsonify({'error': 'Failed to link matches', 'details': str(e)}), 500
+        current_app.logger.error(
+            f"Error linking matches for team {team.name}: {str(e)}"
+        )
+        return jsonify({"error": "Failed to link matches", "details": str(e)}), 500
 
 
-@bp.route('/<team_id>/stats', methods=['GET'])
+@bp.route("/<team_id>/stats", methods=["GET"])
 def get_team_stats(team_id):
     """
     Get team statistics
@@ -473,34 +528,41 @@ def get_team_stats(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
-    stat_type = request.args.get('stat_type', 'tournament')
+    stat_type = request.args.get("stat_type", "tournament")
 
     from app.models import TeamStats
 
-    team_stats = TeamStats.query.filter_by(
-        team_id=team.id,
-        stat_type=stat_type
-    ).first()
+    team_stats = TeamStats.query.filter_by(team_id=team.id, stat_type=stat_type).first()
 
     if not team_stats:
-        return jsonify({
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'stats': None,
-            'message': f'No {stat_type} stats available. Fetch matches and calculate stats first.'
-        }), 200
+        return (
+            jsonify(
+                {
+                    "team_id": str(team.id),
+                    "team_name": team.name,
+                    "stats": None,
+                    "message": f"No {stat_type} stats available. Fetch matches and calculate stats first.",
+                }
+            ),
+            200,
+        )
 
-    return jsonify({
-        'team_id': str(team.id),
-        'team_name': team.name,
-        'stat_type': stat_type,
-        'stats': team_stats.to_dict()
-    }), 200
+    return (
+        jsonify(
+            {
+                "team_id": str(team.id),
+                "team_name": team.name,
+                "stat_type": stat_type,
+                "stats": team_stats.to_dict(),
+            }
+        ),
+        200,
+    )
 
 
-@bp.route('/<team_id>/roster/<player_id>', methods=['DELETE'])
+@bp.route("/<team_id>/roster/<player_id>", methods=["DELETE"])
 def remove_player_from_roster(team_id, player_id):
     """
     Remove a player from team roster (player stays in database)
@@ -515,51 +577,63 @@ def remove_player_from_roster(team_id, player_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     player = Player.query.get(player_id)
     if not player:
-        return jsonify({'error': 'Player not found'}), 404
+        return jsonify({"error": "Player not found"}), 404
 
-    delete_player_param = request.args.get('delete_player', 'false').lower() == 'true'
+    delete_player_param = request.args.get("delete_player", "false").lower() == "true"
 
     try:
         # Find roster entry
-        roster_entry = TeamRoster.query.filter_by(
-            team_id=team_id,
-            player_id=player_id
-        ).filter(TeamRoster.leave_date.is_(None)).first()
+        roster_entry = (
+            TeamRoster.query.filter_by(team_id=team_id, player_id=player_id)
+            .filter(TeamRoster.leave_date.is_(None))
+            .first()
+        )
 
         if not roster_entry:
-            return jsonify({'error': 'Player not in team roster'}), 404
+            return jsonify({"error": "Player not in team roster"}), 404
 
         if delete_player_param:
             # Delete player completely from database
             db.session.delete(player)
-            message = f'Player {player.summoner_name} deleted from database'
-            current_app.logger.info(f'Player {player.summoner_name} deleted from database')
+            message = f"Player {player.summoner_name} deleted from database"
+            current_app.logger.info(
+                f"Player {player.summoner_name} deleted from database"
+            )
         else:
             # Just set leave_date to mark as inactive
             roster_entry.leave_date = datetime.utcnow().date()
-            message = f'Player {player.summoner_name} removed from {team.name} roster'
-            current_app.logger.info(f'Player {player.summoner_name} removed from team {team.name}')
+            message = f"Player {player.summoner_name} removed from {team.name} roster"
+            current_app.logger.info(
+                f"Player {player.summoner_name} removed from team {team.name}"
+            )
 
         db.session.commit()
 
-        return jsonify({
-            'message': message,
-            'player_name': player.summoner_name,
-            'team_name': team.name,
-            'deleted_from_db': delete_player_param
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": message,
+                    "player_name": player.summoner_name,
+                    "team_name": team.name,
+                    "deleted_from_db": delete_player_param,
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Failed to remove player from roster: {str(e)}', exc_info=True)
-        return jsonify({'error': f'Failed to remove player: {str(e)}'}), 500
+        current_app.logger.error(
+            f"Failed to remove player from roster: {str(e)}", exc_info=True
+        )
+        return jsonify({"error": f"Failed to remove player: {str(e)}"}), 500
 
 
-@bp.route('/<team_id>/roster/add', methods=['POST'])
+@bp.route("/<team_id>/roster/add", methods=["POST"])
 def add_player_to_roster(team_id):
     """
     Add a player to team roster via OP.GG URL or player_id
@@ -580,29 +654,29 @@ def add_player_to_roster(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     data = request.get_json()
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({"error": "No data provided"}), 400
 
     try:
         player = None
-        role = data.get('role')
+        role = data.get("role")
 
         # Option 1: Add existing player by ID
-        if 'player_id' in data:
-            player = Player.query.get(data['player_id'])
+        if "player_id" in data:
+            player = Player.query.get(data["player_id"])
             if not player:
-                return jsonify({'error': 'Player not found'}), 404
+                return jsonify({"error": "Player not found"}), 404
 
         # Option 2: Import new player from OP.GG URL
-        elif 'opgg_url' in data:
-            opgg_url = data['opgg_url']
+        elif "opgg_url" in data:
+            opgg_url = data["opgg_url"]
             summoner_names = parse_opgg_url(opgg_url)
 
             if not summoner_names or len(summoner_names) == 0:
-                return jsonify({'error': 'Invalid OP.GG URL or no players found'}), 400
+                return jsonify({"error": "Invalid OP.GG URL or no players found"}), 400
 
             summoner_name = summoner_names[0]  # Take first player
 
@@ -614,26 +688,31 @@ def add_player_to_roster(team_id):
                 riot_client = RiotAPIClient()
 
                 # Parse Riot ID
-                if '#' in summoner_name:
-                    game_name, tag_line = summoner_name.split('#', 1)
+                if "#" in summoner_name:
+                    game_name, tag_line = summoner_name.split("#", 1)
                 else:
                     game_name = summoner_name
-                    tag_line = 'EUW'
+                    tag_line = "EUW"
 
                 # Get account data
                 account_data = riot_client.get_account_by_riot_id(game_name, tag_line)
                 if not account_data:
-                    return jsonify({'error': f'Could not find summoner: {summoner_name}'}), 404
+                    return (
+                        jsonify({"error": f"Could not find summoner: {summoner_name}"}),
+                        404,
+                    )
 
-                puuid = account_data.get('puuid')
+                puuid = account_data.get("puuid")
 
                 # Get summoner data
                 summoner_data = riot_client.get_summoner_by_puuid(puuid)
                 if not summoner_data:
-                    return jsonify({'error': f'Could not fetch summoner data'}), 404
+                    return jsonify({"error": f"Could not fetch summoner data"}), 404
 
-                display_name = f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
-                summoner_id = summoner_data.get('id')
+                display_name = (
+                    f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
+                )
+                summoner_id = summoner_data.get("id")
 
                 # Get ranked data
                 ranked_data = None
@@ -642,9 +721,9 @@ def add_player_to_roster(team_id):
                     ranked_data = riot_client.get_league_entries(summoner_id)
                     if ranked_data:
                         for entry in ranked_data:
-                            if entry.get('queueType') == 'RANKED_SOLO_5x5':
-                                tier = entry.get('tier', '')
-                                rank = entry.get('rank', '')
+                            if entry.get("queueType") == "RANKED_SOLO_5x5":
+                                tier = entry.get("tier", "")
+                                rank = entry.get("rank", "")
                                 current_rank = f"{tier} {rank}"
                                 break
 
@@ -653,29 +732,30 @@ def add_player_to_roster(team_id):
                     puuid=puuid,
                     summoner_name=display_name,
                     summoner_id=summoner_id,
-                    summoner_level=summoner_data.get('summonerLevel'),
-                    profile_icon_id=summoner_data.get('profileIconId'),
+                    summoner_level=summoner_data.get("summonerLevel"),
+                    profile_icon_id=summoner_data.get("profileIconId"),
                     current_rank=current_rank,
-                    region=current_app.config['RIOT_PLATFORM'],
-                    last_active=datetime.utcnow()
+                    region=current_app.config["RIOT_PLATFORM"],
+                    last_active=datetime.utcnow(),
                 )
 
                 db.session.add(player)
                 db.session.commit()
 
-                current_app.logger.info(f'Created new player: {display_name}')
+                current_app.logger.info(f"Created new player: {display_name}")
 
         else:
-            return jsonify({'error': 'Either opgg_url or player_id required'}), 400
+            return jsonify({"error": "Either opgg_url or player_id required"}), 400
 
         # Check if player is already in roster
-        existing_entry = TeamRoster.query.filter_by(
-            team_id=team_id,
-            player_id=player.id
-        ).filter(TeamRoster.leave_date.is_(None)).first()
+        existing_entry = (
+            TeamRoster.query.filter_by(team_id=team_id, player_id=player.id)
+            .filter(TeamRoster.leave_date.is_(None))
+            .first()
+        )
 
         if existing_entry:
-            return jsonify({'error': 'Player already in team roster'}), 409
+            return jsonify({"error": "Player already in team roster"}), 409
 
         # Add to roster
         roster_entry = TeamRoster(
@@ -683,28 +763,37 @@ def add_player_to_roster(team_id):
             player_id=player.id,
             role=role,
             is_main_roster=True,
-            join_date=datetime.utcnow().date()
+            join_date=datetime.utcnow().date(),
         )
 
         db.session.add(roster_entry)
         db.session.commit()
 
-        current_app.logger.info(f'Added player {player.summoner_name} to team {team.name}')
+        current_app.logger.info(
+            f"Added player {player.summoner_name} to team {team.name}"
+        )
 
-        return jsonify({
-            'message': f'Player added to {team.name} roster',
-            'player': player.to_dict(),
-            'team_name': team.name,
-            'role': role
-        }), 201
+        return (
+            jsonify(
+                {
+                    "message": f"Player added to {team.name} roster",
+                    "player": player.to_dict(),
+                    "team_name": team.name,
+                    "role": role,
+                }
+            ),
+            201,
+        )
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Failed to add player to roster: {str(e)}', exc_info=True)
-        return jsonify({'error': f'Failed to add player: {str(e)}'}), 500
+        current_app.logger.error(
+            f"Failed to add player to roster: {str(e)}", exc_info=True
+        )
+        return jsonify({"error": f"Failed to add player: {str(e)}"}), 500
 
 
-@bp.route('/<team_id>/sync-from-opgg', methods=['POST'])
+@bp.route("/<team_id>/sync-from-opgg", methods=["POST"])
 def sync_roster_from_opgg(team_id):
     """
     Sync team roster with OP.GG
@@ -725,26 +814,30 @@ def sync_roster_from_opgg(team_id):
     """
     team = Team.query.get(team_id)
     if not team:
-        return jsonify({'error': 'Team not found'}), 404
+        return jsonify({"error": "Team not found"}), 404
 
     data = request.get_json()
-    if not data or 'opgg_url' not in data:
-        return jsonify({'error': 'opgg_url is required'}), 400
+    if not data or "opgg_url" not in data:
+        return jsonify({"error": "opgg_url is required"}), 400
 
-    opgg_url = data['opgg_url']
+    opgg_url = data["opgg_url"]
 
     try:
         # Parse OP.GG URL
         summoner_names = parse_opgg_url(opgg_url)
         if not summoner_names:
-            return jsonify({'error': 'Invalid OP.GG URL'}), 400
+            return jsonify({"error": "Invalid OP.GG URL"}), 400
 
-        current_app.logger.info(f'Syncing team {team.name} with {len(summoner_names)} players from OP.GG')
+        current_app.logger.info(
+            f"Syncing team {team.name} with {len(summoner_names)} players from OP.GG"
+        )
 
         # Get current roster
-        current_roster = TeamRoster.query.filter_by(
-            team_id=team_id
-        ).filter(TeamRoster.leave_date.is_(None)).all()
+        current_roster = (
+            TeamRoster.query.filter_by(team_id=team_id)
+            .filter(TeamRoster.leave_date.is_(None))
+            .all()
+        )
 
         current_player_puuids = set()
         current_players_map = {}
@@ -760,19 +853,19 @@ def sync_roster_from_opgg(team_id):
 
         for riot_id in summoner_names:
             # Parse Riot ID
-            if '#' in riot_id:
-                game_name, tag_line = riot_id.split('#', 1)
+            if "#" in riot_id:
+                game_name, tag_line = riot_id.split("#", 1)
             else:
                 game_name = riot_id
-                tag_line = 'EUW'
+                tag_line = "EUW"
 
             # Get account data
             account_data = riot_client.get_account_by_riot_id(game_name, tag_line)
             if not account_data:
-                current_app.logger.warning(f'Could not find: {riot_id}')
+                current_app.logger.warning(f"Could not find: {riot_id}")
                 continue
 
-            puuid = account_data.get('puuid')
+            puuid = account_data.get("puuid")
             opgg_puuids.add(puuid)
 
             # Check if player exists
@@ -782,11 +875,15 @@ def sync_roster_from_opgg(team_id):
                 # Create new player
                 summoner_data = riot_client.get_summoner_by_puuid(puuid)
                 if not summoner_data:
-                    current_app.logger.warning(f'Could not fetch summoner data for {riot_id}')
+                    current_app.logger.warning(
+                        f"Could not fetch summoner data for {riot_id}"
+                    )
                     continue
 
-                display_name = f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
-                summoner_id = summoner_data.get('id')
+                display_name = (
+                    f"{account_data.get('gameName')}#{account_data.get('tagLine')}"
+                )
+                summoner_id = summoner_data.get("id")
 
                 # Get ranked data
                 current_rank = None
@@ -794,38 +891,46 @@ def sync_roster_from_opgg(team_id):
                     ranked_data = riot_client.get_league_entries(summoner_id)
                     if ranked_data:
                         for entry in ranked_data:
-                            if entry.get('queueType') == 'RANKED_SOLO_5x5':
-                                current_rank = f"{entry.get('tier')} {entry.get('rank')}"
+                            if entry.get("queueType") == "RANKED_SOLO_5x5":
+                                current_rank = (
+                                    f"{entry.get('tier')} {entry.get('rank')}"
+                                )
                                 break
 
                 player = Player(
                     puuid=puuid,
                     summoner_name=display_name,
                     summoner_id=summoner_id,
-                    summoner_level=summoner_data.get('summonerLevel'),
-                    profile_icon_id=summoner_data.get('profileIconId'),
+                    summoner_level=summoner_data.get("summonerLevel"),
+                    profile_icon_id=summoner_data.get("profileIconId"),
                     current_rank=current_rank,
-                    region=current_app.config['RIOT_PLATFORM'],
-                    last_active=datetime.utcnow()
+                    region=current_app.config["RIOT_PLATFORM"],
+                    last_active=datetime.utcnow(),
                 )
 
                 db.session.add(player)
-                current_app.logger.info(f'Created new player: {display_name}')
+                current_app.logger.info(f"Created new player: {display_name}")
 
             opgg_players.append(player)
 
         db.session.commit()
 
         # Calculate differences
-        players_to_add = opgg_puuids - current_player_puuids  # In OP.GG but not in roster
-        players_to_remove = current_player_puuids - opgg_puuids  # In roster but not in OP.GG
+        players_to_add = (
+            opgg_puuids - current_player_puuids
+        )  # In OP.GG but not in roster
+        players_to_remove = (
+            current_player_puuids - opgg_puuids
+        )  # In roster but not in OP.GG
         players_kept = opgg_puuids & current_player_puuids  # In both
 
         # Remove players not in OP.GG
         for puuid in players_to_remove:
             roster_entry = current_players_map[puuid]
             roster_entry.leave_date = datetime.utcnow().date()
-            current_app.logger.info(f'Removed {roster_entry.player.summoner_name} from roster')
+            current_app.logger.info(
+                f"Removed {roster_entry.player.summoner_name} from roster"
+            )
 
         # Add new players from OP.GG
         for player in opgg_players:
@@ -834,10 +939,10 @@ def sync_roster_from_opgg(team_id):
                     team_id=team.id,
                     player_id=player.id,
                     is_main_roster=True,
-                    join_date=datetime.utcnow().date()
+                    join_date=datetime.utcnow().date(),
                 )
                 db.session.add(roster_entry)
-                current_app.logger.info(f'Added {player.summoner_name} to roster')
+                current_app.logger.info(f"Added {player.summoner_name} to roster")
 
         db.session.commit()
 
@@ -845,16 +950,21 @@ def sync_roster_from_opgg(team_id):
         team.opgg_url = opgg_url
         db.session.commit()
 
-        return jsonify({
-            'message': f'Roster synced successfully for {team.name}',
-            'team_name': team.name,
-            'players_added': len(players_to_add),
-            'players_removed': len(players_to_remove),
-            'players_kept': len(players_kept),
-            'total_players': len(opgg_players)
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": f"Roster synced successfully for {team.name}",
+                    "team_name": team.name,
+                    "players_added": len(players_to_add),
+                    "players_removed": len(players_to_remove),
+                    "players_kept": len(players_kept),
+                    "total_players": len(opgg_players),
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f'Failed to sync roster: {str(e)}', exc_info=True)
-        return jsonify({'error': f'Failed to sync roster: {str(e)}'}), 500
+        current_app.logger.error(f"Failed to sync roster: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to sync roster: {str(e)}"}), 500

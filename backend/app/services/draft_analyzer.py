@@ -3,6 +3,7 @@ Draft Analysis Service
 Analyzes ban/pick patterns for teams
 Best Practice: Focused service for draft-specific logic
 """
+
 from typing import Dict, List
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -30,7 +31,7 @@ class DraftAnalyzer:
                 'side_preferences': {...}
             }
         """
-        current_app.logger.info(f'Analyzing draft patterns for {team.name}')
+        current_app.logger.info(f"Analyzing draft patterns for {team.name}")
 
         cutoff = datetime.utcnow() - timedelta(days=days)
 
@@ -38,14 +39,11 @@ class DraftAnalyzer:
         matches = Match.query.filter(
             Match.is_tournament_game == True,
             Match.created_at >= cutoff,
-            db.or_(
-                Match.winning_team_id == team.id,
-                Match.losing_team_id == team.id
-            )
+            db.or_(Match.winning_team_id == team.id, Match.losing_team_id == team.id),
         ).all()
 
         if not matches:
-            return {'error': 'No tournament matches found'}
+            return {"error": "No tournament matches found"}
 
         # Analyze picks
         pick_counts = defaultdict(int)
@@ -54,8 +52,7 @@ class DraftAnalyzer:
 
         for match in matches:
             team_participants = MatchParticipant.query.filter_by(
-                match_id=match.id,
-                team_id=team.id
+                match_id=match.id, team_id=team.id
             ).all()
 
             for participant in team_participants:
@@ -75,39 +72,43 @@ class DraftAnalyzer:
         top_picks = sorted(
             [(champ, count) for champ, count in pick_counts.items()],
             key=lambda x: x[1],
-            reverse=True
+            reverse=True,
         )[:10]
 
         # Flex picks (champions played in 2+ roles)
         flex_picks = [
             {
-                'champion': champ,
-                'roles': list(roles.keys()),
-                'frequency': sum(roles.values())
+                "champion": champ,
+                "roles": list(roles.keys()),
+                "frequency": sum(roles.values()),
             }
             for champ, roles in role_champion_counts.items()
             if len(roles) >= 2
         ]
 
         result = {
-            'team_id': str(team.id),
-            'team_name': team.name,
-            'matches_analyzed': len(matches),
-            'top_picks': [
+            "team_id": str(team.id),
+            "team_name": team.name,
+            "matches_analyzed": len(matches),
+            "top_picks": [
                 {
-                    'champion': champ,
-                    'games': count,
-                    'winrate': round((pick_wins[champ] / count) * 100, 1) if count > 0 else 0
+                    "champion": champ,
+                    "games": count,
+                    "winrate": (
+                        round((pick_wins[champ] / count) * 100, 1) if count > 0 else 0
+                    ),
                 }
                 for champ, count in top_picks
             ],
-            'flex_picks': flex_picks[:5],  # Top 5 flex picks
-            'total_unique_champions': len(pick_counts)
+            "flex_picks": flex_picks[:5],  # Top 5 flex picks
+            "total_unique_champions": len(pick_counts),
         }
 
         return result
 
-    def suggest_bans_against_team(self, opponent_team: Team, limit: int = 5) -> List[Dict]:
+    def suggest_bans_against_team(
+        self, opponent_team: Team, limit: int = 5
+    ) -> List[Dict]:
         """
         Suggest bans against an opponent team
 
@@ -120,18 +121,20 @@ class DraftAnalyzer:
         """
         patterns = self.analyze_team_draft_patterns(opponent_team)
 
-        if 'error' in patterns:
+        if "error" in patterns:
             return []
 
         suggestions = []
 
         # Suggest high-priority picks with good winrate
-        for pick in patterns['top_picks'][:limit]:
-            if pick['games'] >= 3 and pick['winrate'] >= 55:
-                suggestions.append({
-                    'champion': pick['champion'],
-                    'priority': 'high',
-                    'reason': f"Played {pick['games']} times with {pick['winrate']}% winrate"
-                })
+        for pick in patterns["top_picks"][:limit]:
+            if pick["games"] >= 3 and pick["winrate"] >= 55:
+                suggestions.append(
+                    {
+                        "champion": pick["champion"],
+                        "priority": "high",
+                        "reason": f"Played {pick['games']} times with {pick['winrate']}% winrate",
+                    }
+                )
 
         return suggestions[:limit]

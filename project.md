@@ -30,7 +30,7 @@ CREATE TABLE players (
     summoner_name VARCHAR(100) NOT NULL,
     summoner_id VARCHAR(100) UNIQUE NOT NULL,
     puuid VARCHAR(100) UNIQUE NOT NULL,
-    summoner_level INTEGER,
+    -- summoner_level removed (no longer needed)
     profile_icon_id INTEGER,
     current_rank VARCHAR(20),
     current_lp INTEGER,
@@ -48,7 +48,8 @@ CREATE TABLE team_rosters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
-    role VARCHAR(20), -- TOP, JUNGLE, MID, ADC, SUPPORT
+    role VARCHAR(20), -- Store: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot values)
+                      -- Display: Top, Jungle, Mid, Bot, Support
     is_main_roster BOOLEAN DEFAULT true,
     join_date DATE,
     leave_date DATE,
@@ -65,18 +66,23 @@ CREATE TABLE player_champions (
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
+    game_type VARCHAR(20), -- 'tournament' or 'soloqueue'
     mastery_level INTEGER,
     mastery_points INTEGER,
-    games_played_total INTEGER DEFAULT 0,
-    games_played_recent INTEGER DEFAULT 0, -- last 30 days
-    winrate_total DECIMAL(5,2),
-    winrate_recent DECIMAL(5,2),
+    games_played INTEGER DEFAULT 0,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    winrate DECIMAL(5,2),
     kda_average DECIMAL(4,2),
     cs_per_min DECIMAL(4,2),
+    pink_wards_per_game DECIMAL(4,2), -- NEW: Control wards placed per game
     last_played TIMESTAMP,
     updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(player_id, champion_id)
+    UNIQUE(player_id, champion_id, game_type)
 );
+-- Two entries per champion: one for 'tournament', one for 'soloqueue'
+-- Solo Queue: Top 20 most played champions this season
+-- Prime League: All tournament game champions
 ```
 
 #### `matches`
@@ -111,7 +117,7 @@ CREATE TABLE match_participants (
     champion_name VARCHAR(50),
     role VARCHAR(20),
     lane VARCHAR(20),
-    team_position VARCHAR(20), -- Riot's detected position
+    team_position VARCHAR(20), -- Riot's detected position (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY)
     kills INTEGER,
     deaths INTEGER,
     assists INTEGER,
@@ -122,6 +128,7 @@ CREATE TABLE match_participants (
     damage_taken INTEGER,
     vision_score INTEGER,
     wards_placed INTEGER,
+    control_wards_placed INTEGER, -- NEW: Pink wards placed
     wards_destroyed INTEGER,
     first_blood BOOLEAN,
     first_tower BOOLEAN,
@@ -159,16 +166,24 @@ CREATE TABLE team_stats (
 CREATE TABLE draft_patterns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id), -- NEW: Track which player picked the champion
     champion_id INTEGER NOT NULL,
+    champion_name VARCHAR(50),
     action_type VARCHAR(20), -- 'ban', 'pick'
-    phase INTEGER, -- 1, 2, 3 for ban phases
+    ban_rotation INTEGER, -- 1, 2, 3 for ban phases (rotation 1/2/3)
+    is_first_pick BOOLEAN DEFAULT false, -- TRUE if picked on first pick
     pick_order INTEGER, -- 1-5 for picks
-    side VARCHAR(10), -- 'blue', 'red'
+    side VARCHAR(10), -- 'blue', 'red', 'both' (for aggregated stats)
     frequency INTEGER DEFAULT 1,
     winrate DECIMAL(5,2),
     last_used TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
+-- This table tracks:
+-- - Team's favorite bans by rotation (1/2/3)
+-- - Bans most used against this team
+-- - First pick priorities
+-- - Which player picked which champion (for UI display)
 ```
 
 #### `player_performance_timeline`
@@ -335,55 +350,95 @@ CREATE INDEX idx_match_timeline_match ON match_timeline_data(match_id);
 
 ## 📊 Core Features
 
-### 1. Player Analysis
+### 1. Team Import & Analysis
+
+#### Standard Team Import
+- **OP.GG Import**: Import entire team via OP.GG multi-search URL
+- **Smart Filtering**: Only fetch tournament games where at least 4 imported players played together
+- **Efficiency**: Reduces unnecessary API calls by focusing on relevant games
+- **Player Association**: Automatically associates players with the team
+
+#### Bulk Team Analysis
+- **Multi-Player Input**: Accept up to 20 player names for analysis
+- **Tournament Game Detection**: Find games where 4-5 of the input players played together
+- **Team Composition Analysis**: Identify which combinations of players have tournament experience
+- **Flexibility Indicators**: Mark games with 4 players (partial team) vs 5 players (full team)
+- **Historical Team Building**: Track how different player combinations have performed together
+
+### 2. Player Analysis
 - **Role Detection Algorithm**
   - Analyze last 20+ ranked games
   - Position frequency mapping
   - Flex player identification
-  
-- **Champion Pool Metrics**
-  - Mastery points & level
-  - Recent game frequency (30 days)
-  - Performance metrics per champion
-  - Meta vs Comfort pick classification
+  - **Display Roles**: Top, Jungle, Mid, Bot, Support (not UTILITY/MIDDLE/BOTTOM)
+
+- **Champion Pool Metrics (Two Tabs)**
+  - **Prime League Tab**: Tournament game (queue_id=0) champion stats
+    - Games played, Winrate, KDA, CS/min, Pink Wards/game
+  - **Solo Queue Tab**: Top 20 most played champions this season
+    - Games played, Winrate, KDA, CS/min, Pink Wards/game
 
 - **Performance Indicators**
   - KDA trends over time
   - CS/min by game phase
   - Vision score patterns
+  - Control ward (pink ward) usage
   - Objective participation rate
 
-### 2. Team Scouting
+**Note**: Player level field removed (no longer needed)
 
-#### Early Game Analysis
+### 3. Team Scouting
+
+#### Team Overview (Most Important Stats at a Glance)
+- **Prime League Stats**: Total PL games, wins/losses, winrate
+- **Top 5 Team Champions**: Most picked champions with winrate
+- **Average Team Rank**: Average Elo of the roster
+- **Player Count**: Number of players on roster
+
+**Note**: Dashboard "last matches" widget removed (redundant)
+
+#### Draft Analysis Tab
+Comprehensive draft statistics from Prime League games:
+
+1. **Team Champion Pool**
+   - All champions played with team winrate
+   - **Show which player played which champion**
+
+2. **Favorite Bans (Team's Bans)**
+   - Rotation 1 bans (top 3)
+   - Rotation 2 bans (top 3)
+   - Rotation 3 bans (top 3)
+
+3. **Bans Against Them**
+   - Champions most banned against this team
+   - Rotation 1/2/3 breakdown
+
+4. **First Pick Priority**
+   - Top 3 most picked champions when team has first pick
+
+#### Scouting Report Tab (Detailed Statistics)
 ```json
 {
+  "side_performance": {
+    "blue_side": {"games": 15, "wins": 9, "winrate": 0.60},
+    "red_side": {"games": 12, "wins": 7, "winrate": 0.58}
+  },
+  "average_game_duration": 1847,
   "first_blood_rate": 0.65,
   "first_tower_rate": 0.58,
-  "early_dragon_control": 0.72,
-  "average_gold_diff_15": 1847,
-  "invade_tendency": 0.23,
-  "level_1_strategies": ["invade", "defensive", "lane_swap"]
-}
-```
-
-#### Draft Patterns
-```json
-{
-  "ban_priorities": {
-    "phase_1": ["Ksante", "Viego", "Orianna"],
-    "phase_2": ["Jinx", "Thresh"]
+  "objective_control": {
+    "avg_dragons_per_game": 2.4,
+    "avg_barons_per_game": 0.8,
+    "dragon_control_rate": 0.72
   },
-  "first_pick_priorities": ["Jax", "Rell", "Azir"],
-  "flex_picks": ["Gragas", "Yasuo"],
-  "comfort_picks": {
-    "top": ["Aatrox", "Gnar"],
-    "jungle": ["Lee Sin", "Viego"]
+  "timeline_data": {
+    "average_gold_diff_15": 1200,
+    "first_herald_time": 480
   }
 }
 ```
 
-### 3. Lineup Prediction
+### 4. Lineup Prediction
 
 #### Prediction Algorithm Weights
 ```python
@@ -412,7 +467,7 @@ def calculate_lineup_confidence(predicted_lineup):
     return weighted_average(factors)
 ```
 
-### 4. Pre-Game Reports
+### 5. Pre-Game Reports
 
 #### Report Structure
 ```markdown
@@ -611,17 +666,24 @@ ROLES = {
 
 ```python
 # Team Management
-POST   /api/teams/import          # Import team via OP.GG
+POST   /api/teams/import          # Import team via OP.GG (filters for 4+ players together)
+POST   /api/teams/bulk-analyze    # Analyze up to 20 players for tournament games
 GET    /api/teams/{id}            # Get team details
+GET    /api/teams/{id}/overview   # Team overview (PL stats, top 5 champs, avg rank, player count)
 PUT    /api/teams/{id}            # Update team info
+POST   /api/teams/{id}/refresh    # Refresh/update team stats (fix "Update Stats" button)
 GET    /api/teams/{id}/roster     # Get current roster
 GET    /api/teams/{id}/stats      # Get team statistics
+GET    /api/teams/{id}/draft-analysis # Draft patterns and champion pool
+GET    /api/teams/{id}/scouting-report # Detailed game statistics
 
 # Player Analysis
-GET    /api/players/{id}          # Get player details
-GET    /api/players/{id}/champions # Get champion pool
+GET    /api/players/{id}          # Get player details (without level field)
+GET    /api/players/{id}/champions/tournament # Prime League champion stats
+GET    /api/players/{id}/champions/soloqueue  # Solo Queue top 20 champions
 GET    /api/players/{id}/matches  # Get match history
 GET    /api/players/{id}/performance # Get performance metrics
+GET    /api/players/{id}/opgg     # Generate OP.GG URL for player
 
 # Scouting
 POST   /api/scout/predict-lineup  # Predict lineup for team
@@ -642,22 +704,34 @@ GET    /api/analytics/predictions # Prediction accuracy stats
    ```bash
    POST /api/teams/import
    {
-     "opgg_url": "https://www.op.gg/multisearch/euw?summoners=Player1,Player2,Player3,Player4,Player5,Player6,Player7"
+     "opgg_url": "https://www.op.gg/multisearch/euw?summoners=Player1,Player2,Player3,Player4,Player5,Player6,Player7",
+     "min_players_together": 4
+   }
+   # System filters for tournament games where 4+ players played together
+   ```
+
+2. **Bulk team analysis (NEW)**
+   ```bash
+   POST /api/teams/bulk-analyze
+   {
+     "player_names": ["Player1", "Player2", "Player3", "Player4", "Player5", "Player6", "Player7", "Player8", "Player9", "Player10"],
+     "min_players": 4,
+     "max_players": 5
    }
    ```
 
-2. **System processes data**
+3. **System processes data**
    - Fetches all player data
    - Analyzes last 100 games per player
-   - Identifies tournament games
-   - Calculates statistics
+   - Identifies tournament games where 4-5 players played together
+   - Calculates statistics for team combinations
 
-3. **Generate pre-game report**
+4. **Generate pre-game report**
    ```bash
    GET /api/scout/report/{opponent_team_id}?match_date=2024-02-15
    ```
 
-4. **Live draft assistance**
+5. **Live draft assistance**
    ```bash
    POST /api/scout/draft-helper
    {

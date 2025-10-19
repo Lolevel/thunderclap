@@ -77,11 +77,32 @@ idx_draft_patterns_team ON draft_patterns(team_id, action_type, frequency DESC)
 ### Role Detection
 Analyze last 20+ ranked games, map `teamPosition` field frequency. Players with <60% in one role are marked as flex players. Tournament game roles take priority over solo queue.
 
+**Role Names**: Use `Top`, `Jungle`, `Mid`, `Bot`, `Support` (not UTILITY, rename UTILITY to Support in UI)
+
 ### Performance Metrics
 - **KDA**: (Kills + Assists) / Deaths (minimum 1)
 - **CS/min**: Total CS / (game_duration / 60)
+- **Pink Wards**: Control wards placed per game
 - **Vision Score**: Normalized per game length
 - **Gold Diff @15**: Extracted from Timeline API (last 10 tournament games only to respect rate limits)
+
+### Player Champion Statistics
+Players should display two tabs:
+1. **Prime League Tab**: Shows champion stats from tournament games (queue_id=0)
+   - Games played
+   - Winrate
+   - KDA
+   - CS/min
+   - Pink wards per game
+
+2. **Solo Queue Tab**: Shows top 20 most played champions this season
+   - Games played
+   - Winrate
+   - KDA
+   - CS/min
+   - Pink wards per game
+
+**Note**: Player level field is no longer needed
 
 ### Lineup Prediction Weights
 ```
@@ -106,6 +127,7 @@ Factors contributing to confidence score:
 
 ```
 POST   /api/teams/import          # Import via OP.GG URL
+POST   /api/teams/bulk-analyze    # Analyze up to 20 players for tournament games
 GET    /api/teams/{id}/roster     # Current roster
 GET    /api/teams/{id}/stats      # Team statistics
 
@@ -123,6 +145,76 @@ POST   /api/scout/draft-helper    # Get draft suggestions
 1. Run schema from project.md (tables section)
 2. Create indexes for performance
 3. Optionally seed with test data
+
+### Team Import & Analysis
+**Import Process**: Import entire team via OP.GG multi-search URL. System filters for Prime League games where at least 4 players from the imported roster participated together.
+
+**API Endpoint**: `POST /api/teams/import`
+```json
+{
+  "opgg_url": "https://www.op.gg/multisearch/euw?summoners=Player1,Player2,...",
+  "min_players_together": 4
+}
+```
+
+The system will:
+1. Parse all player names from OP.GG URL
+2. Fetch tournament games for each player
+3. Find games where 4+ of the imported players played together
+4. Store only relevant tournament games for the team
+
+**Bulk Team Analysis**: Still available for analyzing up to 20 players
+
+**API Endpoint**: `POST /api/teams/bulk-analyze`
+```json
+{
+  "player_names": ["Player1", "Player2", "Player3", ...],
+  "min_players": 4,
+  "max_players": 5
+}
+```
+
+**Response Format**:
+```json
+{
+  "analysis_id": "uuid",
+  "total_players": 20,
+  "tournament_games": [
+    {
+      "match_id": "EUW1_1234567890",
+      "game_creation": 1640995200000,
+      "players_found": ["Player1", "Player2", "Player3", "Player4", "Player5"],
+      "player_count": 5,
+      "team_composition": "full_team",
+      "win": true,
+      "game_duration": 1800
+    },
+    {
+      "match_id": "EUW1_1234567891", 
+      "game_creation": 1640995200000,
+      "players_found": ["Player1", "Player2", "Player3", "Player4"],
+      "player_count": 4,
+      "team_composition": "partial_team",
+      "win": false,
+      "game_duration": 2100
+    }
+  ],
+  "statistics": {
+    "total_games": 15,
+    "full_team_games": 8,
+    "partial_team_games": 7,
+    "winrate_full_team": 0.75,
+    "winrate_partial_team": 0.57
+  }
+}
+```
+
+**Implementation Notes**:
+- Query all tournament games for each player
+- Find intersections where 4+ players participated
+- Mark games as "full_team" (5 players) or "partial_team" (4 players)
+- Calculate winrates and statistics for each composition type
+- Return comprehensive analysis of team combinations
 
 ### Tournament Game Detection
 **Important:** All custom games visible via Riot API are tournament games (scrims are never public).
@@ -179,7 +271,7 @@ Parse summoner names from `summoners` query parameter (comma-separated, URL-enco
 
 **Riot Match ID Format**: `{platform}_{matchId}` (e.g., `EUW1_6543210987`)
 
-**Role Names**: Use Riot's standardized values: `TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM`, `UTILITY` (not SUPPORT)
+**Role Names**: Store as Riot's values internally (`TOP`, `JUNGLE`, `MIDDLE`, `BOTTOM`, `UTILITY`) but display as: `Top`, `Jungle`, `Mid`, `Bot`, `Support` in the UI
 
 **Queue IDs**: 0=Custom, 420=Ranked Solo, 440=Ranked Flex, 400=Normal Draft
 
@@ -208,6 +300,56 @@ Cache keys should include relevant parameters (e.g., `player:{puuid}:champions`,
 - Only store public summoner data (no personal information)
 - Implement proper CORS for frontend-backend communication
 
+## UI/Frontend Requirements
+
+### Team Overview Page
+The overview should display the most important information at a glance:
+- **Prime League Stats**: Total PL games, wins/losses, winrate
+- **Top 5 Team Champions**: Most picked champions across all PL games (with winrate)
+- **Average Team Rank**: Average Elo of the roster
+- **Player Count**: Number of players on the roster
+
+**Note**: Remove "last matches" widget from dashboard (not on team panel) as it's redundant
+
+### Team Tabs Structure
+1. **Overview** - Summary statistics (as above)
+2. **Players** - Roster with roles (Top, Jungle, Mid, Bot, Support)
+   - Display roles as: Top, Jungle, Mid, Bot, Support (not UTILITY)
+   - Each player row should have button to open their individual OP.GG
+   - Add checkbox selection to create multi-search OP.GG URL for selected players
+   - Button to open full team OP.GG
+
+3. **Draft Analysis** - Comprehensive draft statistics from PL games
+   - **Team Champion Pool**: All champions played by the team with winrate
+     - Show which player played which champion
+   - **Favorite Bans (Rotation 1/2/3)**: Top 3 most banned champions in each ban phase
+   - **Bans Against Them (Rotation 1/2/3)**: Champions most frequently banned against this team
+   - **First Pick Priority**: Top 3 most picked champions when team has first pick
+
+4. **Scouting Report** - Detailed game statistics
+   - **Side Performance**: Games on blue/red side with winrate for each side
+   - **Average Game Duration**: Mean game time across all PL games
+   - **First Blood %**: Percentage of games where team gets first blood
+   - **First Tower %**: Percentage of games where team gets first tower
+   - **Objective Control**: Average dragons per game, average barons per game, etc.
+   - **Timeline Data**: All timeline-based statistics from stored data
+
+### Player Detail Pages
+- Remove player level field
+- Display champion statistics in two tabs:
+  - **Prime League**: Tournament games only
+  - **Solo Queue**: Top 20 champions this season
+- For each champion show: Games, Winrate, KDA, CS/min, Pink Wards/game
+
+### OP.GG Integration
+- Team page: Button to open `https://www.op.gg/multisearch/euw?summoners=Player1,Player2,...`
+- Player rows: Button to open individual OP.GG
+- Checkboxes: Select multiple players → generate multi-search OP.GG URL
+
+### Buttons to Review
+- **"First Team Import" Button**: Currently non-functional when no teams exist - needs to be fixed or removed
+- **"Update Stats" Button**: Verify it actually refreshes data correctly
+
 ## Common Gotchas
 
 1. **Match Timeline**: Riot's timeline endpoint is separate from match details. **Only fetch for last 10 tournament games per team** due to rate limits. Timeline data is expensive.
@@ -217,6 +359,7 @@ Cache keys should include relevant parameters (e.g., `player:{puuid}:champions`,
 5. **Queue ID Changes**: Riot occasionally modifies queue IDs; maintain a mapping table
 6. **Role Ambiguity**: Riot's auto-detection isn't perfect; may need manual correction for flex picks
 7. **Public Custom Games**: All custom games visible via API are competitive (tournaments). Scrims are always private and not accessible, so no need to filter them out.
+8. **Role Display**: Store roles using Riot's values but always display user-friendly names (Support instead of UTILITY, Mid instead of MIDDLE, Bot instead of BOTTOM)
 
 ## Dependencies
 
