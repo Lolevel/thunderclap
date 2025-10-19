@@ -136,55 +136,70 @@ class StatsCalculator:
 
         return team_stats
 
-    def calculate_player_champion_stats(self, player: Player, days: int = 30) -> int:
+    def calculate_player_champion_stats(self, player: Player, this_season_start: datetime = None) -> int:
         """
         Calculate champion statistics for a player
+        NEW: Separate stats for tournament and soloqueue
 
         Args:
             player: Player model instance
-            days: Number of days to consider for "recent" stats
+            this_season_start: Start date of current season (defaults to 3 months ago)
 
         Returns:
-            Number of champions updated
+            Number of champion entries updated
         """
         current_app.logger.info(f'Calculating champion stats for {player.summoner_name}')
 
+        # Default to last 3 months for "this season"
+        if this_season_start is None:
+            this_season_start = datetime.utcnow() - timedelta(days=90)
+
         # Get all match participations
-        participations = MatchParticipant.query.filter_by(player_id=player.id).all()
+        participations = MatchParticipant.query.filter_by(player_id=player.id)\
+            .join(Match)\
+            .filter(Match.created_at >= this_season_start)\
+            .all()
 
         if not participations:
             current_app.logger.warning(f'No participations found for {player.summoner_name}')
             return 0
 
-        # Group by champion
-        champion_data = {}
-
-        recent_cutoff = datetime.utcnow() - timedelta(days=days)
+        # Group by champion and game type
+        champion_data = {}  # Structure: {(champion_id, game_type): {...}}
 
         for participation in participations:
             champion_id = participation.champion_id
             match = participation.match
 
-            if champion_id not in champion_data:
-                champion_data[champion_id] = {
+            # Determine game type
+            if match.is_tournament_game:
+                game_type = 'tournament'
+            elif match.queue_id in [420, 440]:  # Ranked Solo/Flex
+                game_type = 'soloqueue'
+            else:
+                continue  # Skip non-ranked, non-tournament games
+
+            key = (champion_id, game_type)
+
+            if key not in champion_data:
+                champion_data[key] = {
                     'champion_name': participation.champion_name,
-                    'total_games': 0,
-                    'total_wins': 0,
-                    'recent_games': 0,
-                    'recent_wins': 0,
+                    'games': 0,
+                    'wins': 0,
                     'kills': [],
                     'deaths': [],
                     'assists': [],
                     'cs_per_min': [],
+                    'control_wards': [],
                     'last_played': None
                 }
 
-            data = champion_data[champion_id]
+            data = champion_data[key]
 
-            # Total stats
-            data['total_games'] += 1
+            # Stats tracking
+            data['games'] += 1
             if participation.win:
-                data['total_wins'] += 1
+                data['wins'] += 1
 
             # KDA tracking
             if participation.kills is not None:
@@ -195,32 +210,38 @@ class StatsCalculator:
                 data['assists'].append(participation.assists)
             if participation.cs_per_min:
                 data['cs_per_min'].append(float(participation.cs_per_min))
-
-            # Recent stats (last N days)
-            if match and match.created_at >= recent_cutoff:
-                data['recent_games'] += 1
-                if participation.win:
-                    data['recent_wins'] += 1
+            if participation.control_wards_placed:
+                data['control_wards'].append(participation.control_wards_placed)
 
             # Last played
             if match and (data['last_played'] is None or match.created_at > data['last_played']):
                 data['last_played'] = match.created_at
 
+        # For soloqueue, only keep top 20 most played champions
+        soloq_champions = [(k, v) for k, v in champion_data.items() if k[1] == 'soloqueue']
+        soloq_champions.sort(key=lambda x: x[1]['games'], reverse=True)
+
+        # Remove soloq champions beyond top 20
+        for key, _ in soloq_champions[20:]:
+            del champion_data[key]
+
         # Update database
         champions_updated = 0
 
-        for champion_id, data in champion_data.items():
+        for (champion_id, game_type), data in champion_data.items():
             # Get or create champion entry
             player_champion = PlayerChampion.query.filter_by(
                 player_id=player.id,
-                champion_id=champion_id
+                champion_id=champion_id,
+                game_type=game_type
             ).first()
 
             if not player_champion:
                 player_champion = PlayerChampion(
                     player_id=player.id,
                     champion_id=champion_id,
-                    champion_name=data['champion_name']
+                    champion_name=data['champion_name'],
+                    game_type=game_type
                 )
                 db.session.add(player_champion)
 
@@ -230,17 +251,17 @@ class StatsCalculator:
             avg_assists = sum(data['assists']) / len(data['assists']) if data['assists'] else 0
             avg_kda = (avg_kills + avg_assists) / avg_deaths
 
+            avg_cs = sum(data['cs_per_min']) / len(data['cs_per_min']) if data['cs_per_min'] else 0
+            avg_pink_wards = sum(data['control_wards']) / len(data['control_wards']) if data['control_wards'] else 0
+
             # Update stats
-            player_champion.games_played_total = data['total_games']
-            player_champion.games_played_recent = data['recent_games']
-            player_champion.winrate_total = round((data['total_wins'] / data['total_games']) * 100, 2)
-            player_champion.winrate_recent = round(
-                (data['recent_wins'] / data['recent_games']) * 100, 2
-            ) if data['recent_games'] > 0 else 0
+            player_champion.games_played = data['games']
+            player_champion.wins = data['wins']
+            player_champion.losses = data['games'] - data['wins']
+            player_champion.winrate = round((data['wins'] / data['games']) * 100, 2) if data['games'] > 0 else 0
             player_champion.kda_average = round(avg_kda, 2)
-            player_champion.cs_per_min = round(
-                sum(data['cs_per_min']) / len(data['cs_per_min']), 2
-            ) if data['cs_per_min'] else 0
+            player_champion.cs_per_min = round(avg_cs, 2)
+            player_champion.pink_wards_per_game = round(avg_pink_wards, 2)
             player_champion.last_played = data['last_played']
             player_champion.updated_at = datetime.utcnow()
 
@@ -249,7 +270,7 @@ class StatsCalculator:
         db.session.commit()
 
         current_app.logger.info(
-            f'Updated {champions_updated} champion stats for {player.summoner_name}'
+            f'Updated {champions_updated} champion entries for {player.summoner_name}'
         )
 
         return champions_updated
@@ -329,9 +350,13 @@ class StatsCalculator:
         active_roster = [r for r in team.rosters if r.leave_date is None]
         champions_updated = 0
 
+        # Convert days to datetime
+        from datetime import datetime, timedelta
+        this_season_start = datetime.utcnow() - timedelta(days=days)
+
         for roster_entry in active_roster:
             player = roster_entry.player
-            updated = self.calculate_player_champion_stats(player, days)
+            updated = self.calculate_player_champion_stats(player, this_season_start)
             champions_updated += updated
 
             # Detect main role

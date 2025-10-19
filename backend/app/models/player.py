@@ -15,7 +15,7 @@ class Player(db.Model):
     summoner_name = db.Column(db.String(100), nullable=False)
     summoner_id = db.Column(db.String(100), unique=True, nullable=True)  # Nullable due to Riot API bug (Issue #1092)
     puuid = db.Column(db.String(100), unique=True, nullable=False)
-    summoner_level = db.Column(db.Integer)
+    # summoner_level removed - no longer needed
     profile_icon_id = db.Column(db.Integer)
     current_rank = db.Column(db.String(20))
     current_lp = db.Column(db.Integer)
@@ -41,7 +41,7 @@ class Player(db.Model):
             'summoner_name': self.summoner_name,
             'summoner_id': self.summoner_id,
             'puuid': self.puuid,
-            'summoner_level': self.summoner_level,
+            # summoner_level removed
             'profile_icon_id': self.profile_icon_id,
             'current_rank': self.current_rank,
             'current_lp': self.current_lp,
@@ -54,21 +54,23 @@ class Player(db.Model):
 
 
 class PlayerChampion(db.Model):
-    """Player champion statistics"""
+    """Player champion statistics - separate entries for tournament and soloqueue"""
     __tablename__ = 'player_champions'
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     player_id = db.Column(UUID(as_uuid=True), db.ForeignKey('players.id', ondelete='CASCADE'), nullable=False)
     champion_id = db.Column(db.Integer, nullable=False)
     champion_name = db.Column(db.String(50))
+    game_type = db.Column(db.String(20), nullable=False)  # 'tournament' or 'soloqueue'
     mastery_level = db.Column(db.Integer)
     mastery_points = db.Column(db.Integer)
-    games_played_total = db.Column(db.Integer, default=0)
-    games_played_recent = db.Column(db.Integer, default=0)  # last 30 days
-    winrate_total = db.Column(db.Numeric(5, 2))
-    winrate_recent = db.Column(db.Numeric(5, 2))
+    games_played = db.Column(db.Integer, default=0)
+    wins = db.Column(db.Integer, default=0)
+    losses = db.Column(db.Integer, default=0)
+    winrate = db.Column(db.Numeric(5, 2))
     kda_average = db.Column(db.Numeric(4, 2))
     cs_per_min = db.Column(db.Numeric(4, 2))
+    pink_wards_per_game = db.Column(db.Numeric(4, 2))  # NEW: Control wards per game
     last_played = db.Column(db.DateTime)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -76,7 +78,7 @@ class PlayerChampion(db.Model):
     player = db.relationship('Player', back_populates='champions')
 
     __table_args__ = (
-        db.UniqueConstraint('player_id', 'champion_id', name='uq_player_champion'),
+        db.UniqueConstraint('player_id', 'champion_id', 'game_type', name='uq_player_champion_type'),
     )
 
     def __repr__(self):
@@ -89,14 +91,16 @@ class PlayerChampion(db.Model):
             'player_id': str(self.player_id),
             'champion_id': self.champion_id,
             'champion_name': self.champion_name,
+            'game_type': self.game_type,
             'mastery_level': self.mastery_level,
             'mastery_points': self.mastery_points,
-            'games_played_total': self.games_played_total,
-            'games_played_recent': self.games_played_recent,
-            'winrate_total': float(self.winrate_total) if self.winrate_total else None,
-            'winrate_recent': float(self.winrate_recent) if self.winrate_recent else None,
+            'games_played': self.games_played,
+            'wins': self.wins,
+            'losses': self.losses,
+            'winrate': float(self.winrate) if self.winrate else None,
             'kda_average': float(self.kda_average) if self.kda_average else None,
             'cs_per_min': float(self.cs_per_min) if self.cs_per_min else None,
+            'pink_wards_per_game': float(self.pink_wards_per_game) if self.pink_wards_per_game else None,
             'last_played': self.last_played.isoformat() if self.last_played else None,
         }
 

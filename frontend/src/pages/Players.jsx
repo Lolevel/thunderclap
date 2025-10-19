@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Search } from 'lucide-react';
 import api from '../config/api';
+import { displayRole } from '../utils/roleMapping';
 
 const Players = () => {
   const [players, setPlayers] = useState([]);
@@ -138,7 +139,7 @@ const Players = () => {
                           <span className="text-text-muted">{team.tag || team.name}</span>
                           {team.role && (
                             <span className={`text-xs ${getRoleColor(team.role)}`}>
-                              ({team.role})
+                              ({displayRole(team.role)})
                             </span>
                           )}
                           {idx < player.teams.length - 1 && <span className="text-text-muted">,</span>}

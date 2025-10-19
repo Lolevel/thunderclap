@@ -26,7 +26,7 @@ CREATE TABLE players (
     summoner_id VARCHAR(100) UNIQUE,
     -- Nullable due to Riot API bug (Issue #1092, Aug 2025)
     puuid VARCHAR(100) UNIQUE NOT NULL,
-    summoner_level INTEGER,
+    -- summoner_level removed (no longer needed)
     profile_icon_id INTEGER,
     current_rank VARCHAR(20),
     current_lp INTEGER,
@@ -42,7 +42,8 @@ CREATE TABLE team_rosters (
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
     role VARCHAR(20),
-    -- TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY
+    -- Store: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot values)
+    -- Display: Top, Jungle, Mid, Bot, Support
     is_main_roster BOOLEAN DEFAULT true,
     join_date DATE,
     leave_date DATE,
@@ -51,23 +52,27 @@ CREATE TABLE team_rosters (
     UNIQUE(team_id, player_id, join_date)
 );
 -- Player champion statistics
+-- Two entries per champion: one for 'tournament', one for 'soloqueue'
 CREATE TABLE player_champions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
+    game_type VARCHAR(20) NOT NULL,
+    -- 'tournament' or 'soloqueue'
     mastery_level INTEGER,
     mastery_points INTEGER,
-    games_played_total INTEGER DEFAULT 0,
-    games_played_recent INTEGER DEFAULT 0,
-    -- last 30 days
-    winrate_total DECIMAL(5, 2),
-    winrate_recent DECIMAL(5, 2),
+    games_played INTEGER DEFAULT 0,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    winrate DECIMAL(5, 2),
     kda_average DECIMAL(4, 2),
     cs_per_min DECIMAL(4, 2),
+    pink_wards_per_game DECIMAL(4, 2),
+    -- NEW: Control wards placed per game
     last_played TIMESTAMP,
     updated_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(player_id, champion_id)
+    UNIQUE(player_id, champion_id, game_type)
 );
 -- ============================================================
 -- MATCH DATA TABLES
@@ -100,7 +105,7 @@ CREATE TABLE match_participants (
     role VARCHAR(20),
     lane VARCHAR(20),
     team_position VARCHAR(20),
-    -- Riot's auto-detected position
+    -- Riot's auto-detected position (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY)
     kills INTEGER,
     deaths INTEGER,
     assists INTEGER,
@@ -111,6 +116,8 @@ CREATE TABLE match_participants (
     damage_taken INTEGER,
     vision_score INTEGER,
     wards_placed INTEGER,
+    control_wards_placed INTEGER,
+    -- NEW: Pink wards placed
     wards_destroyed INTEGER,
     first_blood BOOLEAN,
     first_tower BOOLEAN,
@@ -162,18 +169,25 @@ CREATE TABLE team_stats (
     UNIQUE(team_id, stat_type)
 );
 -- Draft patterns (ban/pick tendencies)
+-- Tracks: Team's favorite bans by rotation, bans against them, first pick priorities, which player picked what
 CREATE TABLE draft_patterns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id),
+    -- NEW: Track which player picked the champion
     champion_id INTEGER NOT NULL,
+    champion_name VARCHAR(50),
+    -- NEW: Champion name for easier display
     action_type VARCHAR(20),
     -- 'ban', 'pick'
-    phase INTEGER,
-    -- 1, 2, 3 for ban phases
+    ban_rotation INTEGER,
+    -- NEW: 1, 2, 3 for ban phases (rotation 1/2/3)
+    is_first_pick BOOLEAN DEFAULT false,
+    -- NEW: TRUE if picked on first pick
     pick_order INTEGER,
     -- 1-5 for picks
     side VARCHAR(10),
-    -- 'blue', 'red'
+    -- 'blue', 'red', 'both' (for aggregated stats)
     frequency INTEGER DEFAULT 1,
     winrate DECIMAL(5, 2),
     last_used TIMESTAMP,
@@ -258,6 +272,10 @@ CREATE INDEX idx_scouting_reports_opponent ON scouting_reports(opponent_team_id,
 -- ============================================================
 COMMENT ON TABLE matches IS 'All custom games (queue_id=0) visible via API are tournament games - scrims are never public';
 COMMENT ON TABLE match_timeline_data IS 'Only store timeline data for last 10 tournament games per team to respect API rate limits';
-COMMENT ON COLUMN team_rosters.role IS 'Use Riot standard: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (not SUPPORT)';
+COMMENT ON COLUMN team_rosters.role IS 'Store as Riot values (TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY) but display as Top, Jungle, Mid, Bot, Support';
 COMMENT ON COLUMN match_participants.team_position IS 'Riot auto-detected position - may differ from assigned role';
 COMMENT ON TABLE lineup_predictions IS 'Prediction weights: 50% tournament history, 30% role coverage, 18% solo queue activity, 2% performance';
+COMMENT ON TABLE player_champions IS 'Two entries per champion: one for tournament games, one for solo queue. Solo Queue shows top 20 most played this season';
+COMMENT ON COLUMN player_champions.pink_wards_per_game IS 'Control wards (pink wards) placed per game';
+COMMENT ON COLUMN match_participants.control_wards_placed IS 'Control wards (pink wards) placed in this match';
+COMMENT ON TABLE draft_patterns IS 'Tracks team ban priorities, bans against them, first pick priorities, and which player picked which champion';

@@ -212,7 +212,7 @@ class RiotAPIClient:
     # ============================================================
 
     def get_match_history(self, puuid: str, start: int = 0, count: int = 20,
-                          queue: Optional[int] = None) -> Optional[List[str]]:
+                          queue: Optional[int] = None, match_type: Optional[str] = None) -> Optional[List[str]]:
         """
         Get match history (match IDs)
 
@@ -220,7 +220,9 @@ class RiotAPIClient:
             puuid: Player UUID
             start: Start index
             count: Number of matches (max 100)
-            queue: Queue ID filter (e.g., 420 for ranked solo, 0 for custom)
+            queue: Queue ID filter (e.g., 420 for ranked solo, 440 for flex)
+            match_type: Match type filter (e.g., 'ranked', 'normal', 'tourney', 'tutorial')
+                        Note: Custom games don't have a queue, use type filter instead
 
         Returns:
             List of match IDs or None
@@ -229,6 +231,8 @@ class RiotAPIClient:
         params = {'start': start, 'count': min(count, 100)}
         if queue is not None:
             params['queue'] = queue
+        if match_type is not None:
+            params['type'] = match_type
 
         return self._make_request(url, params)
 
@@ -316,42 +320,28 @@ class RiotAPIClient:
         """
         Check if match is a tournament game
 
-        Criteria:
-        - queue_id == 0 (custom game)
-        - duration > 900 seconds (15 minutes)
-        - all players level 30+
-        - draft mode enabled
+        Since we fetch matches using type=tourney filter,
+        all matches returned are tournament games by definition.
+        We just need basic validation.
 
         Args:
             match_data: Match data from Riot API
 
         Returns:
-            True if tournament game
+            True if tournament game (always true for type=tourney matches)
         """
         info = match_data.get('info', {})
 
-        # Check queue and duration
-        if info.get('queueId') != 0:
-            return False
-
-        if info.get('gameDuration', 0) < 900:
-            return False
-
-        # Check player levels and draft mode
+        # Basic validation: must have participants and reasonable duration
         participants = info.get('participants', [])
         if not participants:
             return False
 
-        # All players should be level 30+
-        all_level_30 = all(p.get('summonerLevel', 0) >= 30 for p in participants)
-        if not all_level_30:
+        # Filter out very short games (remakes, crashes, etc.)
+        if info.get('gameDuration', 0) < 300:  # Less than 5 minutes
             return False
 
-        # Draft mode check (game mode should be 'CLASSIC' and not blind pick)
-        game_mode = info.get('gameMode', '')
-        if game_mode != 'CLASSIC':
-            return False
-
+        # If fetched via type=tourney, it's a tournament game
         return True
 
     def close(self):

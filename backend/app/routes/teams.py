@@ -113,7 +113,6 @@ def import_team():
                     summoner_name=display_name,
                     summoner_id=summoner_id,  # Will be None due to API bug
                     puuid=puuid,
-                    summoner_level=summoner_data.get("summonerLevel"),
                     profile_icon_id=summoner_data.get("profileIconId"),
                     region=current_app.config["RIOT_PLATFORM"],
                     last_active=datetime.utcnow(),
@@ -127,7 +126,6 @@ def import_team():
                 player.summoner_name = display_name
                 if summoner_id:  # Only update if we have it
                     player.summoner_id = summoner_id
-                player.summoner_level = summoner_data.get("summonerLevel")
                 player.profile_icon_id = summoner_data.get("profileIconId")
                 player.last_active = datetime.utcnow()
                 player.updated_at = datetime.utcnow()
@@ -309,7 +307,8 @@ def fetch_team_matches(team_id):
 
     Request body:
         {
-            "count_per_player": 50 (optional, default: 50)
+            "count_per_player": 50 (optional, default: 50),
+            "min_players_together": 4 (optional, default: 4)
         }
 
     Returns:
@@ -325,17 +324,21 @@ def fetch_team_matches(team_id):
 
     data = request.get_json() or {}
     count_per_player = data.get("count_per_player", 50)
+    min_players_together = data.get("min_players_together", 4)
 
-    current_app.logger.info(f"Fetching tournament matches for team {team.name}")
+    current_app.logger.info(
+        f"Fetching tournament matches for team {team.name} "
+        f"(min {min_players_together} players together)"
+    )
 
     try:
         # Initialize services
         riot_client = RiotAPIClient()
         match_fetcher = MatchFetcher(riot_client)
 
-        # Fetch tournament games
+        # Fetch tournament games with 4+ players filter
         matches_fetched = match_fetcher.fetch_tournament_games_only(
-            team, count_per_player
+            team, count_per_player, min_players_together
         )
 
         current_app.logger.info(
@@ -348,6 +351,7 @@ def fetch_team_matches(team_id):
                     "team_id": str(team.id),
                     "team_name": team.name,
                     "matches_fetched": matches_fetched,
+                    "min_players_together": min_players_together,
                     "message": f"Fetched {matches_fetched} tournament matches",
                 }
             ),
@@ -732,7 +736,6 @@ def add_player_to_roster(team_id):
                     puuid=puuid,
                     summoner_name=display_name,
                     summoner_id=summoner_id,
-                    summoner_level=summoner_data.get("summonerLevel"),
                     profile_icon_id=summoner_data.get("profileIconId"),
                     current_rank=current_rank,
                     region=current_app.config["RIOT_PLATFORM"],
@@ -901,7 +904,6 @@ def sync_roster_from_opgg(team_id):
                     puuid=puuid,
                     summoner_name=display_name,
                     summoner_id=summoner_id,
-                    summoner_level=summoner_data.get("summonerLevel"),
                     profile_icon_id=summoner_data.get("profileIconId"),
                     current_rank=current_rank,
                     region=current_app.config["RIOT_PLATFORM"],

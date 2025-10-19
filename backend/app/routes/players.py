@@ -58,14 +58,15 @@ def get_player_champions(player_id):
 
     min_games = request.args.get('min_games', 0, type=int)
     limit = request.args.get('limit', 20, type=int)
+    game_type = request.args.get('game_type', 'tournament', type=str)  # 'tournament' or 'soloqueue'
 
-    query = PlayerChampion.query.filter_by(player_id=player_id)
+    query = PlayerChampion.query.filter_by(player_id=player_id, game_type=game_type)
 
     if min_games > 0:
-        query = query.filter(PlayerChampion.games_played_recent >= min_games)
+        query = query.filter(PlayerChampion.games_played >= min_games)
 
     champions = query.order_by(
-        PlayerChampion.games_played_recent.desc()
+        PlayerChampion.games_played.desc()
     ).limit(limit).all()
 
     return jsonify({

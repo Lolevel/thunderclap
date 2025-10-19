@@ -190,7 +190,7 @@ const PlayerDetail = () => {
             <p className="text-text-muted text-sm">Total Games</p>
           </div>
           <p className="text-3xl font-bold text-text-primary">
-            {champions.reduce((sum, c) => sum + c.games_played_total, 0)}
+            {champions.reduce((sum, c) => sum + (c.games_played || 0), 0)}
           </p>
         </div>
 
@@ -201,16 +201,6 @@ const PlayerDetail = () => {
           </div>
           <p className="text-3xl font-bold text-text-primary">
             {champions.length}
-          </p>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center gap-3 mb-2">
-            <User className="w-5 h-5 text-secondary" />
-            <p className="text-text-muted text-sm">Level</p>
-          </div>
-          <p className="text-3xl font-bold text-text-primary">
-            {player.summoner_level || 'N/A'}
           </p>
         </div>
 
@@ -241,14 +231,14 @@ const PlayerDetail = () => {
                     {champ.champion_name}
                   </h3>
                   <span className="text-xs text-text-muted">
-                    {champ.games_played_total} Games
+                    {champ.games_played || 0} Games
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-sm">
                   <div>
                     <p className="text-text-muted text-xs">Winrate</p>
-                    <p className={`font-semibold ${(champ.winrate_total || 0) >= 50 ? 'text-success' : 'text-error'}`}>
-                      {champ.winrate_total !== null && champ.winrate_total !== undefined ? champ.winrate_total.toFixed(0) : '0'}%
+                    <p className={`font-semibold ${(champ.winrate || 0) >= 50 ? 'text-success' : 'text-error'}`}>
+                      {champ.winrate !== null && champ.winrate !== undefined ? champ.winrate.toFixed(0) : '0'}%
                     </p>
                   </div>
                   <div>
@@ -264,13 +254,6 @@ const PlayerDetail = () => {
                     </p>
                   </div>
                 </div>
-                {champ.games_played_recent > 0 && (
-                  <div className="mt-2 pt-2 border-t border-border/50">
-                    <p className="text-xs text-text-muted">
-                      Recent: {champ.games_played_recent} games, {champ.winrate_recent !== null && champ.winrate_recent !== undefined ? champ.winrate_recent.toFixed(0) : '0'}% WR
-                    </p>
-                  </div>
-                )}
               </div>
             ))}
           </div>

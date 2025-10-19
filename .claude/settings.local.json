@@ -1,24 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)",
-      "Bash(npm create:*)",
-      "Bash(npm install)",
-      "Bash(npm install:*)",
-      "Bash(npx tailwindcss init:*)",
-      "Bash(./node_modules/.bin/tailwindcss:*)",
-      "Bash(npm run dev)",
-      "WebSearch",
-      "Bash(timeout 3 curl:*)",
-      "Bash(docker logs:*)",
-      "Bash(docker exec:*)",
-      "Bash(docker ps:*)",
-      "Bash(curl:*)",
-      "Bash(docker restart:*)",
-      "Bash(python -m json.tool:*)",
-      "Bash(docker-compose logs:*)",
-      "Bash(find:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose exec backend python3 -c \"\nfrom app import create_app, db\nfrom app.models import Team\nfrom app.services.draft_analyzer import DraftAnalyzer\n\napp = create_app()\nwith app.app_context():\n    team = Team.query.get(''05b3e36b-a651-4da7-b7be-0eadc441dfb3'')\n    if team:\n        analyzer = DraftAnalyzer()\n        result = analyzer.analyze_team_draft_patterns(team, days=90)\n        \n        print(f''\\n=== Draft Analysis for {team.name} ===\\n'')\n        \n        # Objective Control\n        obj = result[''objective_control'']\n        print(''Objective Control:'')\n        print(f\"\"  Baron: {obj[''baron''][''total_kills'']} total ({obj[''baron''][''avg_per_game'']} avg/game, {obj[''baron''][''first_baron_rate'']}% first)\"\")\n        print(f\"\"  Dragon: {obj[''dragon''][''total_kills'']} total ({obj[''dragon''][''avg_per_game'']} avg/game, {obj[''dragon''][''first_dragon_rate'']}% first)\"\")\n        print(f\"\"  Herald: {obj[''herald''][''total_kills'']} total ({obj[''herald''][''avg_per_game'']} avg/game, {obj[''herald''][''first_herald_rate'']}% first)\"\")\n        \n        # Bans\n        print(f''\\nFavorite Bans:'')\n        print(f\"\"  Phase 1 (First 3 bans):\"\")\n        for ban in result[''favorite_bans''][''phase_1''][:5]:\n            print(f\"\"    Champion {ban[''champion_id'']}: {ban[''count'']} times\"\")\n        \n        print(f\"\"  Phase 2 (Last 2 bans):\"\")\n        for ban in result[''favorite_bans''][''phase_2''][:5]:\n            print(f\"\"    Champion {ban[''champion_id'']}: {ban[''count'']} times\"\")\n    else:\n        print(''Team not found'')\n\")"
     ],
     "deny": [],
     "ask": []

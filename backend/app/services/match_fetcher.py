@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from flask import current_app
 from app import db
-from app.models import Player, Match, MatchParticipant, MatchTimelineData, Team
+from app.models import Player, Match, MatchParticipant, MatchTimelineData, MatchTeamStats, Team
 from app.services.riot_client import RiotAPIClient
 
 
@@ -106,36 +106,165 @@ class MatchFetcher:
         current_app.logger.info(f'Fetched {total_new_matches} total matches for team {team.name}')
         return total_new_matches
 
-    def fetch_tournament_games_only(self, team: Team, count_per_player: int = 100) -> int:
+    def fetch_tournament_games_only(self, team: Team, count_per_player: int = 100,
+                                   min_players_together: int = 3) -> int:
         """
         Fetch only tournament games (custom games) for a team
+        Stores games where at least 3 players from THIS TEAM participated
 
         Args:
             team: Team model instance
-            count_per_player: Matches to check per player
+            count_per_player: Matches to check per player (default: 100)
+            min_players_together: Minimum number of team players required (default: 3)
 
         Returns:
             Number of tournament games stored
         """
-        current_app.logger.info(f'Fetching tournament games for team {team.name}')
+        current_app.logger.info(
+            f'Fetching tournament games for team {team.name} '
+            f'(min {min_players_together} players together)'
+        )
 
         total_tournament_games = 0
-
         active_roster = [r for r in team.rosters if r.leave_date is None]
+        team_player_puuids = {r.player.puuid for r in active_roster}
+        team_player_ids = {r.player_id for r in active_roster}
+
+        # Track matches we've already processed to avoid duplicates
+        processed_match_ids = set()
 
         for roster_entry in active_roster:
             player = roster_entry.player
 
-            # Fetch custom games only (queue_id = 0)
-            tournament_games = self.fetch_player_matches(
-                player,
+            # Get tournament match IDs for this player (last 100)
+            # Using type=tourney to get only Prime League games
+            match_ids = self.riot_client.get_match_history(
+                player.puuid,
                 count=count_per_player,
-                queue=0  # Custom games only
+                match_type='tourney'
             )
-            total_tournament_games += tournament_games
 
+            if not match_ids:
+                continue
+
+            for match_id in match_ids:
+                # Skip if already processed in this run
+                if match_id in processed_match_ids:
+                    continue
+
+                processed_match_ids.add(match_id)
+
+                # Check if match already exists in database
+                existing_match = Match.query.filter_by(match_id=match_id).first()
+                if existing_match:
+                    # Match exists - check if already linked to this team
+                    if existing_match.winning_team_id == team.id or existing_match.losing_team_id == team.id:
+                        current_app.logger.debug(f'Match {match_id} already linked to team {team.name}')
+                        continue
+
+                    # Match exists but not linked to this team - check if we should link it
+                    team_participants = [p for p in existing_match.participants if p.player_id in team_player_ids]
+
+                    if len(team_participants) >= min_players_together:
+                        # Link existing match to this team
+                        team_won = team_participants[0].win if team_participants else False
+                        if team_won:
+                            existing_match.winning_team_id = team.id
+                        else:
+                            existing_match.losing_team_id = team.id
+
+                        # Update participant team_id
+                        for participant in team_participants:
+                            participant.team_id = team.id
+
+                        # Update MatchTeamStats team_id for this team's side
+                        team_riot_team_id = team_participants[0].riot_team_id if team_participants and team_participants[0].riot_team_id else None
+                        if team_riot_team_id:
+                            team_stats = MatchTeamStats.query.filter_by(
+                                match_id=existing_match.id,
+                                riot_team_id=team_riot_team_id
+                            ).first()
+                            if team_stats:
+                                team_stats.team_id = team.id
+
+                        total_tournament_games += 1
+                        current_app.logger.info(
+                            f'Linked existing match {match_id} to team {team.name} '
+                            f'({len(team_participants)} team players)'
+                        )
+
+                    continue
+
+                # Fetch match details from Riot API
+                match_data = self.riot_client.get_match(match_id)
+                if not match_data:
+                    continue
+
+                # Count how many team players participated (via PUUID)
+                participants = match_data.get('info', {}).get('participants', [])
+                team_players_in_match = sum(
+                    1 for p in participants
+                    if p.get('puuid') in team_player_puuids
+                )
+
+                # Only store if 3+ team players participated
+                if team_players_in_match >= min_players_together:
+                    try:
+                        # Store match with team assignment
+                        match = self._store_match(match_data)
+
+                        # Determine if team won
+                        team_won = None
+                        for participant_data in participants:
+                            if participant_data.get('puuid') in team_player_puuids:
+                                team_won = participant_data.get('win', False)
+                                break
+
+                        # Assign team to match
+                        if team_won:
+                            match.winning_team_id = team.id
+                        else:
+                            match.losing_team_id = team.id
+
+                        # Update participant team_id for team players
+                        for participant in match.participants:
+                            player_obj = Player.query.filter_by(puuid=participant_data.get('puuid')).first() if participant_data.get('puuid') else None
+                            if player_obj and player_obj.id in team_player_ids:
+                                participant.team_id = team.id
+
+                        # Update MatchTeamStats team_id for this team's side
+                        # Find which riot_team_id our team played on
+                        team_riot_team_id = None
+                        for participant in match.participants:
+                            if participant.team_id == team.id and participant.riot_team_id:
+                                team_riot_team_id = participant.riot_team_id
+                                break
+
+                        if team_riot_team_id:
+                            team_stats = MatchTeamStats.query.filter_by(
+                                match_id=match.id,
+                                riot_team_id=team_riot_team_id
+                            ).first()
+                            if team_stats:
+                                team_stats.team_id = team.id
+
+                        total_tournament_games += 1
+                        current_app.logger.info(
+                            f'Stored match {match_id} with {team_players_in_match} team players from {team.name}'
+                        )
+                    except Exception as e:
+                        current_app.logger.error(f'Error storing match {match_id}: {e}')
+                        db.session.rollback()
+                else:
+                    current_app.logger.debug(
+                        f'Skipped match {match_id}: only {team_players_in_match} team players '
+                        f'(need {min_players_together})'
+                    )
+
+        db.session.commit()
         current_app.logger.info(
-            f'Fetched {total_tournament_games} tournament games for team {team.name}'
+            f'Fetched {total_tournament_games} tournament games for team {team.name} '
+            f'({min_players_together}+ players together)'
         )
         return total_tournament_games
 
@@ -231,6 +360,11 @@ class MatchFetcher:
         for participant_data in participants:
             self._store_participant(match, participant_data)
 
+        # Store team stats (objectives and bans)
+        teams = info.get('teams', [])
+        for team_data in teams:
+            self._store_team_stats(match, team_data)
+
         return match
 
     def _store_participant(self, match: Match, participant_data: Dict[str, Any]) -> MatchParticipant:
@@ -253,6 +387,15 @@ class MatchFetcher:
         game_duration_minutes = match.game_duration / 60 if match.game_duration else 1
         cs_per_min = cs_total / game_duration_minutes if game_duration_minutes > 0 else 0
 
+        # Extract pink wards (control wards)
+        # Try multiple field names as Riot API can be inconsistent
+        control_wards = (
+            participant_data.get('detectedControlWardsPlaced') or
+            participant_data.get('visionWardsBoughtInGame') or
+            participant_data.get('controlWardsPlaced') or
+            0
+        )
+
         participant = MatchParticipant(
             match_id=match.id,
             player_id=player.id if player else None,
@@ -271,10 +414,12 @@ class MatchFetcher:
             damage_taken=participant_data.get('totalDamageTaken'),
             vision_score=participant_data.get('visionScore'),
             wards_placed=participant_data.get('wardsPlaced'),
+            control_wards_placed=control_wards,  # NEW: Pink wards
             wards_destroyed=participant_data.get('wardsKilled'),
             first_blood=participant_data.get('firstBloodKill', False),
             first_tower=participant_data.get('firstTowerKill', False),
-            win=participant_data.get('win', False)
+            win=participant_data.get('win', False),
+            riot_team_id=participant_data.get('teamId')  # 100=Blue, 200=Red
         )
 
         db.session.add(participant)
@@ -346,3 +491,44 @@ class MatchFetcher:
 
         db.session.add(timeline)
         return timeline
+
+    def _store_team_stats(self, match: Match, team_data: Dict[str, Any]) -> MatchTeamStats:
+        """
+        Store team statistics for a match (objectives, bans)
+
+        Args:
+            match: Match model instance
+            team_data: Team data from Riot API
+
+        Returns:
+            Created MatchTeamStats instance
+        """
+        riot_team_id = team_data.get('teamId')
+        objectives = team_data.get('objectives', {})
+        bans = team_data.get('bans', [])
+
+        # Extract objective counts
+        baron = objectives.get('baron', {})
+        dragon = objectives.get('dragon', {})
+        herald = objectives.get('riftHerald', {})
+        tower = objectives.get('tower', {})
+        inhibitor = objectives.get('inhibitor', {})
+
+        team_stats = MatchTeamStats(
+            match_id=match.id,
+            riot_team_id=riot_team_id,
+            win=team_data.get('win', False),
+            baron_kills=baron.get('kills', 0),
+            dragon_kills=dragon.get('kills', 0),
+            herald_kills=herald.get('kills', 0),
+            tower_kills=tower.get('kills', 0),
+            inhibitor_kills=inhibitor.get('kills', 0),
+            first_baron=baron.get('first', False),
+            first_dragon=dragon.get('first', False),
+            first_herald=herald.get('first', False),
+            first_tower=tower.get('first', False),
+            bans=bans  # Store full ban list with pickTurn
+        )
+
+        db.session.add(team_stats)
+        return team_stats
