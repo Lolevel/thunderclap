@@ -60,9 +60,9 @@ def get_team_overview(team_id):
                 "winrate": round((team_stats.wins / team_stats.games_played * 100), 1) if team_stats.games_played > 0 else 0
             }
 
-        # Get top 5 team champions
+        # Get top 5 team champions (by champion_id, not champion_name to avoid MonkeyKing)
         top_champions = db.session.query(
-            MatchParticipant.champion_name,
+            MatchParticipant.champion_id,
             func.count(MatchParticipant.id).label('picks'),
             func.sum(func.cast(MatchParticipant.win, db.Integer)).label('wins'),
             Player.summoner_name
@@ -74,15 +74,23 @@ def get_team_overview(team_id):
             MatchParticipant.team_id == team.id,
             Match.is_tournament_game == True
         ).group_by(
-            MatchParticipant.champion_name,
+            MatchParticipant.champion_id,
             Player.summoner_name
         ).order_by(
             desc('picks')
         ).limit(5).all()
 
+        # Enrich with champion data from database
+        from app.utils.champion_helper import batch_enrich_champions
+
+        champion_ids = [champ.champion_id for champ in top_champions]
+        champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
+
         top_5_champions = [
             {
-                "champion": champ.champion_name,
+                "champion_id": champ.champion_id,
+                "champion": champion_data_map.get(champ.champion_id, {}).get('name', f'Champion {champ.champion_id}'),
+                "champion_icon": champion_data_map.get(champ.champion_id, {}).get('icon_url'),
                 "picks": champ.picks,
                 "wins": champ.wins or 0,
                 "winrate": round((champ.wins / champ.picks * 100), 1) if champ.picks > 0 and champ.wins else 0,
@@ -91,34 +99,65 @@ def get_team_overview(team_id):
             for champ in top_champions
         ]
 
-        # Get average rank
+        # Get average rank using new rank calculation system
+        from app.utils.rank_calculator import calculate_average_rank, rank_to_points, points_to_rank
+
         active_roster = [r for r in team.rosters if r.leave_date is None]
-        player_ranks = []
 
-        rank_values = {
-            'IRON': 0, 'BRONZE': 1, 'SILVER': 2, 'GOLD': 3,
-            'PLATINUM': 4, 'EMERALD': 4.5, 'DIAMOND': 5,
-            'MASTER': 6, 'GRANDMASTER': 7, 'CHALLENGER': 8
-        }
-
+        # Collect Solo/Duo Queue ranks from active roster with points
+        soloq_ranks = []
+        all_points = []
         for roster_entry in active_roster:
-            if roster_entry.player.current_rank:
-                rank_str = roster_entry.player.current_rank.split()[0].upper()
-                if rank_str in rank_values:
-                    player_ranks.append(rank_values[rank_str])
+            if roster_entry.player and roster_entry.player.soloq_tier:
+                rank_data = {
+                    'tier': roster_entry.player.soloq_tier,
+                    'division': roster_entry.player.soloq_division,
+                    'lp': roster_entry.player.soloq_lp or 0
+                }
+                soloq_ranks.append(rank_data)
 
-        avg_rank_value = sum(player_ranks) / len(player_ranks) if player_ranks else 0
+                # Calculate points for peak/lowest
+                points = rank_to_points(
+                    roster_entry.player.soloq_tier,
+                    roster_entry.player.soloq_division,
+                    roster_entry.player.soloq_lp or 0
+                )
+                all_points.append(points)
 
-        # Convert back to rank string
-        rank_names = ['Iron', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master', 'Grandmaster', 'Challenger']
-        avg_rank = rank_names[min(int(avg_rank_value), len(rank_names) - 1)] if avg_rank_value > 0 else 'Unranked'
+        # Calculate average, peak, and lowest
+        avg_rank_info = calculate_average_rank(soloq_ranks)
+
+        # Calculate peak (highest) and lowest ranks
+        peak_rank_info = None
+        lowest_rank_info = None
+
+        if all_points:
+            peak_points = max(all_points)
+            lowest_points = min(all_points)
+
+            from app.utils.rank_calculator import get_rank_icon_url
+
+            peak_rank_info = points_to_rank(peak_points)
+            peak_rank_info['icon_url'] = get_rank_icon_url(
+                peak_rank_info['tier'],
+                peak_rank_info.get('division')
+            )
+
+            lowest_rank_info = points_to_rank(lowest_points)
+            lowest_rank_info['icon_url'] = get_rank_icon_url(
+                lowest_rank_info['tier'],
+                lowest_rank_info.get('division')
+            )
 
         return jsonify({
             "team_id": str(team.id),
             "team_name": team.name,
             "pl_stats": pl_stats,
             "top_5_champions": top_5_champions,
-            "average_rank": avg_rank,
+            "average_rank": avg_rank_info['display'] if soloq_ranks else 'Unranked',
+            "average_rank_info": avg_rank_info if soloq_ranks else None,
+            "peak_rank_info": peak_rank_info,
+            "lowest_rank_info": lowest_rank_info,
             "player_count": len(active_roster)
         }), 200
 
@@ -488,6 +527,10 @@ def refresh_team_stats(team_id):
         stats_calculator = StatsCalculator()
         stats_result = stats_calculator.calculate_all_stats_for_team(team)
 
+        # 4. Fetch player ranks
+        from app.utils.rank_fetcher import fetch_team_ranks
+        rank_result = fetch_team_ranks(str(team.id))
+
         return jsonify({
             "message": f"Team stats refreshed for {team.name}",
             "details": {
@@ -495,7 +538,9 @@ def refresh_team_stats(team_id):
                 "matches_linked": matches_linked,
                 "stats_calculated": stats_result.get("stats_calculated", []),
                 "champions_updated": stats_result.get("champions_updated", 0),
-                "players_processed": stats_result.get("players_processed", 0)
+                "players_processed": stats_result.get("players_processed", 0),
+                "ranks_updated": rank_result.get("success", 0),
+                "ranks_failed": rank_result.get("failed", 0)
             }
         }), 200
 
@@ -672,8 +717,34 @@ def refresh_team_stats_stream(team_id):
             stats_calculator = StatsCalculator()
             stats_result = stats_calculator.calculate_all_stats_for_team(team)
 
+            # 4. Fetch player ranks
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Aktualisiere Spieler-Ränge...'}})}\n\n"
+
+            from app.utils.rank_fetcher import fetch_player_rank
+            ranks_updated = 0
+            ranks_failed = 0
+
+            for idx, roster_entry in enumerate(active_roster):
+                if roster_entry.player:
+                    player = roster_entry.player
+                    yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'Lade Rang: {player.summoner_name}...'}})}\n\n"
+
+                    try:
+                        if fetch_player_rank(player, riot_client):
+                            ranks_updated += 1
+
+                            # Show rank in progress message
+                            if player.soloq_tier:
+                                rank_display = f"{player.soloq_tier} {player.soloq_division or ''}"
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{player.summoner_name}: {rank_display}'}})}\n\n"
+                        else:
+                            ranks_failed += 1
+                    except Exception as e:
+                        current_app.logger.error(f"Error fetching rank for {player.summoner_name}: {e}")
+                        ranks_failed += 1
+
             # Send completion
-            yield f"data: {json.dumps({'type': 'complete', 'data': {'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'players_processed': total_players}})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'data': {'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'players_processed': total_players, 'ranks_updated': ranks_updated, 'ranks_failed': ranks_failed}})}\n\n"
 
         except Exception as e:
             current_app.logger.error(f"Error in refresh stream: {str(e)}")
@@ -772,25 +843,38 @@ def get_team_matches(team_id):
             # Determine if team won
             team_won = match.winning_team_id == team.id
 
-            # Build participant data
+            # Build participant data with enriched champion info
+            from app.utils.champion_helper import batch_enrich_champions
+
+            # Collect all champion IDs for batch enrichment
+            champion_ids = [p.champion_id for p in participants]
+            champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
+
             participant_data = []
             for p in participants:
                 is_team_member = p.player_id in team_player_ids
+
+                # Get champion info from database
+                champ_info = champion_data_map.get(p.champion_id, {
+                    'name': p.champion_name,
+                    'icon_url': None
+                })
 
                 participant_data.append({
                     "player_id": str(p.player_id) if p.player_id else None,
                     "summoner_name": p.player.summoner_name if p.player else "Unknown",
                     "is_team_member": is_team_member,
                     "champion_id": p.champion_id,
-                    "champion_name": p.champion_name,
+                    "champion_name": champ_info.get('name', p.champion_name),
+                    "champion_icon": champ_info.get('icon_url'),
                     "role": p.team_position or p.role,
                     "kills": p.kills or 0,
                     "deaths": p.deaths or 0,
                     "assists": p.assists or 0,
                     "cs": p.cs_total or 0,
                     "gold": p.gold_earned or 0,
-                    "damage_dealt": p.damage_dealt or 0,
-                    "damage_taken": p.damage_taken or 0,
+                    "damage_dealt": p.total_damage_dealt_to_champions or 0,
+                    "damage_taken": p.total_damage_taken or 0,
                     "vision_score": p.vision_score or 0,
                     "win": p.win
                 })

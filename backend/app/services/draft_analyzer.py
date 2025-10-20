@@ -61,41 +61,61 @@ class DraftAnalyzer:
         red_side_wins = 0
 
         for match in matches:
-            team_participants = MatchParticipant.query.filter_by(
-                match_id=match.id, team_id=team.id
-            ).all()
+            # Determine which side the team played on
+            team_won = match.winning_team_id == team.id
 
-            # Determine side using Riot's teamId (100 = Blue, 200 = Red)
-            if team_participants:
-                # Get side from first team participant's riot_team_id
-                first_participant = team_participants[0]
-                is_blue_side = first_participant.riot_team_id == 100 if first_participant.riot_team_id else None
-                team_won = match.winning_team_id == team.id
+            # Get all team stats for this match (2 records: blue and red)
+            all_team_stats = MatchTeamStats.query.filter_by(match_id=match.id).all()
 
-                if is_blue_side is not None:
-                    if is_blue_side:
-                        blue_side_games += 1
-                        if team_won:
-                            blue_side_wins += 1
-                    else:
-                        red_side_games += 1
-                        if team_won:
-                            red_side_wins += 1
+            # Find the stats for our team based on win/loss
+            team_stats_record = None
+            for stats in all_team_stats:
+                if (team_won and stats.win) or (not team_won and not stats.win):
+                    team_stats_record = stats
+                    break
+
+            # Track side performance
+            if team_stats_record:
+                is_blue_side = team_stats_record.riot_team_id == 100
+
+                if is_blue_side:
+                    blue_side_games += 1
+                    if team_won:
+                        blue_side_wins += 1
+                else:
+                    red_side_games += 1
+                    if team_won:
+                        red_side_wins += 1
+
+            # Get participants for this match (for champion pool analysis)
+            # Get all participants and filter by riot_team_id matching our team's side
+            all_participants = MatchParticipant.query.filter_by(match_id=match.id).all()
+
+            # Filter participants by team side
+            team_participants = []
+            if team_stats_record:
+                team_participants = [p for p in all_participants if p.riot_team_id == team_stats_record.riot_team_id]
 
             for participant in team_participants:
-                champion_name = participant.champion_name
+                champion_id = participant.champion_id
                 player_id = participant.player_id
 
-                champion_picks[champion_name]['total'] += 1
+                champion_picks[champion_id]['total'] += 1
                 if participant.win:
-                    champion_picks[champion_name]['wins'] += 1
+                    champion_picks[champion_id]['wins'] += 1
 
                 if player_id:
-                    champion_picks[champion_name]['players'][player_id] += 1
+                    champion_picks[champion_id]['players'][player_id] += 1
 
         # Build team champion pool with player info
+        # Enrich with champion data from database
+        from app.utils.champion_helper import batch_enrich_champions
+
+        champion_ids = list(champion_picks.keys())
+        champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
+
         team_champion_pool = []
-        for champion, data in champion_picks.items():
+        for champion_id, data in champion_picks.items():
             # Find most common player for this champion
             most_common_player_id = max(
                 data['players'].items(),
@@ -111,8 +131,18 @@ class DraftAnalyzer:
 
             winrate = (data['wins'] / data['total'] * 100) if data['total'] > 0 else 0
 
+            # Get champion info from database
+            champ_info = champion_data_map.get(champion_id, {
+                'id': champion_id,
+                'name': f'Champion {champion_id}',
+                'key': f'Champion{champion_id}'
+            })
+
             team_champion_pool.append({
-                'champion': champion,
+                'champion_id': champion_id,
+                'champion': champ_info.get('name', f'Champion {champion_id}'),
+                'champion_key': champ_info.get('key'),
+                'champion_icon': champ_info.get('icon_url'),
                 'picks': data['total'],
                 'wins': data['wins'],
                 'losses': data['total'] - data['wins'],
@@ -312,7 +342,7 @@ class DraftAnalyzer:
 
     def get_favorite_bans(self, team: Team, limit: int = 3) -> Dict[str, List[Dict]]:
         """
-        Get team's favorite bans by rotation
+        Get team's favorite bans by rotation from match_team_stats
 
         Args:
             team: Team instance
@@ -320,33 +350,93 @@ class DraftAnalyzer:
 
         Returns:
             {
-                'rotation_1': [...],
-                'rotation_2': [...],
-                'rotation_3': [...]
+                'rotation_1': [...],  # First ban phase (3 bans)
+                'rotation_2': [...]   # Second ban phase (2 bans)
             }
         """
+        from app.models.match import MatchTeamStats
+        from collections import Counter
+
+        # Get all tournament matches for this team
+        matches = Match.query.filter(
+            Match.is_tournament_game == True,
+            db.or_(Match.winning_team_id == team.id, Match.losing_team_id == team.id)
+        ).all()
+
+        # Track bans by phase
+        # Phase 1: Blue [1,3,5], Red [2,4,6]
+        # Phase 2: Blue [8,10], Red [7,9]
+        phase1_bans = Counter()
+        phase2_bans = Counter()
+
+        for match in matches:
+            # Determine which side the team played on
+            team_won = match.winning_team_id == team.id
+
+            # Get all team stats for this match (2 records: blue and red)
+            all_team_stats = MatchTeamStats.query.filter_by(match_id=match.id).all()
+
+            # Find the stats for our team based on win/loss
+            team_stats = None
+            for stats in all_team_stats:
+                if (team_won and stats.win) or (not team_won and not stats.win):
+                    team_stats = stats
+                    break
+
+            if not team_stats or not team_stats.bans:
+                continue
+
+            # Determine which turns belong to this team
+            riot_team_id = team_stats.riot_team_id
+            if riot_team_id == 100:  # Blue
+                phase1_turns = [1, 3, 5]
+                phase2_turns = [8, 10]
+            else:  # 200 = Red
+                phase1_turns = [2, 4, 6]
+                phase2_turns = [7, 9]
+
+            # Count bans by phase
+            for ban in team_stats.bans:
+                champion_id = ban.get('championId')
+                pick_turn = ban.get('pickTurn')
+
+                if not champion_id or champion_id == -1:  # No ban
+                    continue
+
+                if pick_turn in phase1_turns:
+                    phase1_bans[champion_id] += 1
+                elif pick_turn in phase2_turns:
+                    phase2_bans[champion_id] += 1
+
+        # Enrich with champion data from database
+        from app.utils.champion_helper import batch_enrich_champions
+
+        # Get all unique champion IDs from bans
+        all_ban_ids = set(champ_id for champ_id, _ in phase1_bans.most_common(limit))
+        all_ban_ids.update(champ_id for champ_id, _ in phase2_bans.most_common(limit))
+
+        champion_data_map = batch_enrich_champions(list(all_ban_ids), include_images=True)
+
         result = {
-            'rotation_1': [],
-            'rotation_2': [],
-            'rotation_3': []
-        }
-
-        for rotation in [1, 2, 3]:
-            patterns = DraftPattern.query.filter_by(
-                team_id=team.id,
-                action_type='ban',
-                ban_rotation=rotation
-            ).order_by(DraftPattern.frequency.desc()).limit(limit).all()
-
-            result[f'rotation_{rotation}'] = [
+            'rotation_1': [
                 {
-                    'champion': p.champion_name,
-                    'champion_id': p.champion_id,
-                    'frequency': p.frequency,
-                    'winrate': float(p.winrate) if p.winrate else 0
+                    'champion_id': champ_id,
+                    'champion': champion_data_map.get(champ_id, {}).get('name', f'Champion {champ_id}'),
+                    'champion_icon': champion_data_map.get(champ_id, {}).get('icon_url'),
+                    'frequency': count
                 }
-                for p in patterns
+                for champ_id, count in phase1_bans.most_common(limit)
+            ],
+            'rotation_2': [
+                {
+                    'champion_id': champ_id,
+                    'champion': champion_data_map.get(champ_id, {}).get('name', f'Champion {champ_id}'),
+                    'champion_icon': champion_data_map.get(champ_id, {}).get('icon_url'),
+                    'frequency': count
+                }
+                for champ_id, count in phase2_bans.most_common(limit)
             ]
+        }
 
         return result
 
@@ -417,7 +507,7 @@ class DraftAnalyzer:
 
     def calculate_objective_stats(self, team: Team, days: int = 90) -> Dict:
         """
-        Calculate objective control statistics
+        Calculate objective control statistics from match_team_stats
 
         Args:
             team: Team instance
@@ -429,9 +519,12 @@ class DraftAnalyzer:
                 'avg_barons': float,
                 'avg_heralds': float,
                 'first_blood_rate': float,
-                'first_tower_rate': float
+                'first_tower_rate': float,
+                'total_games': int
             }
         """
+        from app.models.match import MatchTeamStats
+
         cutoff = datetime.utcnow() - timedelta(days=days)
 
         matches = Match.query.filter(
@@ -441,32 +534,54 @@ class DraftAnalyzer:
         ).all()
 
         if not matches:
-            return {}
+            return {
+                'first_blood_rate': 0,
+                'first_tower_rate': 0,
+                'avg_dragons': 0,
+                'avg_barons': 0,
+                'avg_heralds': 0,
+                'total_games': 0
+            }
 
         total_games = len(matches)
         first_blood_count = 0
         first_tower_count = 0
+        total_dragons = 0
+        total_barons = 0
+        total_heralds = 0
 
         for match in matches:
-            team_participants = MatchParticipant.query.filter_by(
-                match_id=match.id, team_id=team.id
-            ).all()
+            # Determine which side the team played on
+            # If winning_team_id matches, team won; if losing_team_id matches, team lost
+            team_won = match.winning_team_id == team.id
 
-            # First blood
-            if any(p.first_blood for p in team_participants):
-                first_blood_count += 1
+            # Get all team stats for this match (2 records: blue and red)
+            all_team_stats = MatchTeamStats.query.filter_by(match_id=match.id).all()
 
-            # First tower
-            if any(p.first_tower for p in team_participants):
-                first_tower_count += 1
+            # Find the stats for our team based on win/loss
+            team_stats = None
+            for stats in all_team_stats:
+                if (team_won and stats.win) or (not team_won and not stats.win):
+                    team_stats = stats
+                    break
+
+            if team_stats:
+                # First objectives
+                if team_stats.first_blood:
+                    first_blood_count += 1
+                if team_stats.first_tower:
+                    first_tower_count += 1
+
+                # Objective counts
+                total_dragons += team_stats.dragon_kills
+                total_barons += team_stats.baron_kills
+                total_heralds += team_stats.herald_kills
 
         return {
             'first_blood_rate': round((first_blood_count / total_games * 100), 1) if total_games > 0 else 0,
             'first_tower_rate': round((first_tower_count / total_games * 100), 1) if total_games > 0 else 0,
-            'total_games': total_games,
-            # Note: Dragon/Baron/Herald stats need timeline data
-            # TODO: Parse from MatchTimelineData
-            'avg_dragons': 0,  # Placeholder
-            'avg_barons': 0,   # Placeholder
-            'avg_heralds': 0   # Placeholder
+            'avg_dragons': round(total_dragons / total_games, 1) if total_games > 0 else 0,
+            'avg_barons': round(total_barons / total_games, 1) if total_games > 0 else 0,
+            'avg_heralds': round(total_heralds / total_games, 1) if total_games > 0 else 0,
+            'total_games': total_games
         }

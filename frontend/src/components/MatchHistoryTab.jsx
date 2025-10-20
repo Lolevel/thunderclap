@@ -50,11 +50,10 @@ const MatchHistoryTab = ({ teamId }) => {
     });
   };
 
-  const getChampionUrl = (championName) => {
-    if (!championName) return null;
-    // Format champion name for DDragon (e.g., "Lee Sin" -> "LeeSin")
-    const formattedName = championName.replace(/[^a-zA-Z]/g, '');
-    return `https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${formattedName}.png`;
+  const getChampionUrl = (participant) => {
+    // Use champion_icon from API (Community Dragon with correct patch)
+    // Falls back to placeholder if not available
+    return participant?.champion_icon || null;
   };
 
   const getRoleColor = (role) => {
@@ -150,7 +149,7 @@ const MatchHistoryTab = ({ teamId }) => {
                           title={`${p.summoner_name} - ${p.champion_name}`}
                         >
                           <img
-                            src={getChampionUrl(p.champion_name)}
+                            src={getChampionUrl(p)}
                             alt={p.champion_name}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -192,7 +191,7 @@ const MatchHistoryTab = ({ teamId }) => {
                         {/* Champion */}
                         <div className="w-12 h-12 rounded-lg overflow-hidden">
                           <img
-                            src={getChampionUrl(p.champion_name)}
+                            src={getChampionUrl(p)}
                             alt={p.champion_name}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -289,7 +288,7 @@ const MatchHistoryTab = ({ teamId }) => {
                         {/* Champion */}
                         <div className="w-12 h-12 rounded-lg overflow-hidden">
                           <img
-                            src={getChampionUrl(p.champion_name)}
+                            src={getChampionUrl(p)}
                             alt={p.champion_name}
                             className="w-full h-full object-cover"
                             onError={(e) => {

@@ -290,3 +290,95 @@ def delete_player(player_id):
         db.session.rollback()
         current_app.logger.error(f"Failed to delete player: {str(e)}", exc_info=True)
         return jsonify({'error': f'Failed to delete player: {str(e)}'}), 500
+
+
+@bp.route('/<player_id>/tournament-games/fetch', methods=['POST'])
+def fetch_player_tournament_games(player_id):
+    """
+    Fetch ALL tournament games for a specific player
+    This is separate from team-based game tracking
+
+    POST /api/players/<player_id>/tournament-games/fetch
+
+    Query parameters:
+        - max_games: Maximum games to fetch (default: 100)
+        - force_refresh: Re-fetch existing games (default: false)
+
+    Returns:
+        {
+            'player_id': str,
+            'player_name': str,
+            'total_fetched': int,
+            'new_games': int,
+            'existing_games': int,
+            'errors': List[str]
+        }
+    """
+    player = Player.query.get(player_id)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+
+    max_games = request.args.get('max_games', 100, type=int)
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+
+    try:
+        from app.services.player_match_service import PlayerMatchService
+        from app.services import RiotAPIClient
+
+        riot_api = RiotAPIClient()
+        service = PlayerMatchService(riot_api)
+
+        stats = service.fetch_all_player_tournament_games(
+            player=player,
+            max_games=max_games,
+            force_refresh=force_refresh
+        )
+
+        return jsonify(stats), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to fetch tournament games for player {player_id}: {str(e)}")
+        return jsonify({'error': f'Failed to fetch tournament games: {str(e)}'}), 500
+
+
+@bp.route('/<player_id>/tournament-stats', methods=['GET'])
+def get_player_tournament_stats(player_id):
+    """
+    Get comprehensive tournament statistics for a player
+    Includes ALL tournament games, not just team games
+
+    GET /api/players/<player_id>/tournament-stats
+
+    Query parameters:
+        - days: Days to analyze (default: 365)
+
+    Returns:
+        {
+            'total_games': int,
+            'wins': int,
+            'losses': int,
+            'winrate': float,
+            'kda': float,
+            'champion_pool': List[Dict]
+        }
+    """
+    player = Player.query.get(player_id)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+
+    days = request.args.get('days', 365, type=int)
+
+    try:
+        from app.services.player_match_service import PlayerMatchService
+        from app.services import RiotAPIClient
+
+        riot_api = RiotAPIClient()
+        service = PlayerMatchService(riot_api)
+
+        stats = service.get_player_tournament_statistics(player, days=days)
+
+        return jsonify(stats), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to get tournament stats for player {player_id}: {str(e)}")
+        return jsonify({'error': f'Failed to get tournament stats: {str(e)}'}), 500

@@ -191,12 +191,49 @@ const PlayersTab = ({
 								</p>
 							</Link>
 
-							{/* Rank */}
-							{entry.player.current_rank && (
-								<span className="text-sm text-text-secondary px-2 py-1 bg-surface-hover rounded">
-									{entry.player.current_rank}
-								</span>
-							)}
+							{/* Rank Display */}
+							<div className="flex flex-col gap-1">
+								{/* Solo/Duo Queue Rank */}
+								{entry.player.soloq && (
+									<div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/10 to-primary/5 rounded border border-primary/20">
+										{entry.player.soloq.icon_url && (
+											<img
+												src={entry.player.soloq.icon_url}
+												alt={entry.player.soloq.display}
+												className="w-6 h-6 rounded-full"
+												onError={(e) => {
+													e.target.style.display = 'none';
+												}}
+											/>
+										)}
+										<div className="flex flex-col">
+											<span className="text-xs font-semibold text-text-primary">
+												{entry.player.soloq.display}
+											</span>
+											<span className="text-xs text-text-muted">
+												{entry.player.soloq.lp} LP
+											</span>
+										</div>
+									</div>
+								)}
+
+								{/* Flex Queue Rank (optional, smaller) */}
+								{entry.player.flexq && (
+									<div className="flex items-center gap-1.5 px-2 py-1 bg-surface-hover rounded text-xs">
+										<span className="text-text-muted">Flex:</span>
+										<span className="text-text-secondary font-medium">
+											{entry.player.flexq.display}
+										</span>
+									</div>
+								)}
+
+								{/* Unranked */}
+								{!entry.player.soloq && !entry.player.flexq && (
+									<span className="text-xs text-text-muted px-2 py-1 bg-surface-hover rounded">
+										Unranked
+									</span>
+								)}
+							</div>
 
 							{/* Actions */}
 							<div className="flex items-center gap-2">

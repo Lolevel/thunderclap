@@ -107,8 +107,20 @@ const DraftAnalysisTab = ({ teamId }) => {
 							<tbody>
 								{team_champion_pool.slice(0, 15).map((champ, index) => (
 									<tr key={index} className="border-b border-border/50 hover:bg-surface-hover transition-colors">
-										<td className="py-3 px-3 font-semibold text-text-primary">
-											{champ.champion}
+										<td className="py-3 px-3">
+											<div className="flex items-center gap-2">
+												{champ.champion_icon && (
+													<img
+														src={champ.champion_icon}
+														alt={champ.champion}
+														className="w-8 h-8 rounded-full object-cover"
+														onError={(e) => {
+															e.target.style.display = 'none';
+														}}
+													/>
+												)}
+												<span className="font-semibold text-text-primary">{champ.champion}</span>
+											</div>
 										</td>
 										<td className="py-3 px-3 text-text-secondary">
 											{champ.player || 'N/A'}
@@ -176,8 +188,8 @@ const DraftAnalysisTab = ({ teamId }) => {
 						<Ban className="w-5 h-5 text-error" />
 						Lieblings-Bans (Nach Rotation)
 					</h3>
-					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-						{['rotation_1', 'rotation_2', 'rotation_3'].map((rotation, rotIdx) => (
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+						{['rotation_1', 'rotation_2'].map((rotation, rotIdx) => (
 							<div key={rotation} className="p-4 bg-surface-hover rounded-lg">
 								<h4 className="font-semibold text-text-primary mb-3">
 									Rotation {rotIdx + 1}

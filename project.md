@@ -95,8 +95,18 @@ CREATE TABLE matches (
     game_version VARCHAR(20),
     map_id INTEGER,
     queue_id INTEGER, -- 0 for custom, 420 for ranked solo
+    platform_id VARCHAR(10) DEFAULT 'EUW1',
+
+    -- Tournament info
     is_tournament_game BOOLEAN DEFAULT false,
     tournament_name VARCHAR(100),
+    tournament_code VARCHAR(100), -- Riot tournament code identifier
+
+    -- Game state
+    game_ended_in_surrender BOOLEAN DEFAULT false,
+    game_ended_in_early_surrender BOOLEAN DEFAULT false,
+
+    -- Team references
     winning_team_id UUID REFERENCES teams(id),
     losing_team_id UUID REFERENCES teams(id),
     created_at TIMESTAMP DEFAULT NOW()
@@ -107,35 +117,158 @@ CREATE TABLE matches (
 ```
 
 #### `match_participants`
+Stores comprehensive player performance data for each match. **77 total columns** including:
+
 ```sql
 CREATE TABLE match_participants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id),
     team_id UUID REFERENCES teams(id),
+
+    -- Identity (stored for all players, even untracked)
+    puuid VARCHAR(100) NOT NULL,
+    summoner_name VARCHAR(100),
+    riot_game_name VARCHAR(50),
+    riot_tagline VARCHAR(10),
+
+    -- Champion & Position
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
-    role VARCHAR(20),
+    team_position VARCHAR(20), -- TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY
+    individual_position VARCHAR(20),
     lane VARCHAR(20),
-    team_position VARCHAR(20), -- Riot's detected position (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY)
-    kills INTEGER,
-    deaths INTEGER,
-    assists INTEGER,
-    cs_total INTEGER,
-    cs_per_min DECIMAL(4,2),
-    gold_earned INTEGER,
-    damage_dealt INTEGER,
-    damage_taken INTEGER,
-    vision_score INTEGER,
-    wards_placed INTEGER,
-    control_wards_placed INTEGER, -- NEW: Pink wards placed
-    wards_destroyed INTEGER,
-    first_blood BOOLEAN,
-    first_tower BOOLEAN,
-    win BOOLEAN,
+    role VARCHAR(20),
+    riot_team_id INTEGER NOT NULL, -- 100=Blue, 200=Red
+    participant_id INTEGER,
+
+    -- Core stats
+    kills INTEGER DEFAULT 0,
+    deaths INTEGER DEFAULT 0,
+    assists INTEGER DEFAULT 0,
+
+    -- CS & Gold
+    total_minions_killed INTEGER DEFAULT 0,
+    neutral_minions_killed INTEGER DEFAULT 0,
+    cs_total INTEGER, -- Computed: total_minions + neutral_minions
+    cs_per_min DECIMAL(5,2),
+    gold_earned INTEGER DEFAULT 0,
+    gold_spent INTEGER DEFAULT 0,
+
+    -- Damage (detailed breakdown)
+    total_damage_dealt_to_champions INTEGER DEFAULT 0,
+    physical_damage_dealt_to_champions INTEGER DEFAULT 0,
+    magic_damage_dealt_to_champions INTEGER DEFAULT 0,
+    true_damage_dealt_to_champions INTEGER DEFAULT 0,
+    total_damage_taken INTEGER DEFAULT 0,
+    damage_self_mitigated INTEGER DEFAULT 0,
+
+    -- Vision
+    vision_score INTEGER DEFAULT 0,
+    wards_placed INTEGER DEFAULT 0,
+    wards_killed INTEGER DEFAULT 0,
+    control_wards_placed INTEGER DEFAULT 0, -- Pink wards
+    vision_score_per_min DECIMAL(5,2),
+
+    -- Combat achievements
+    first_blood BOOLEAN DEFAULT false,
+    first_blood_assist BOOLEAN DEFAULT false,
+    first_tower BOOLEAN DEFAULT false,
+    first_tower_assist BOOLEAN DEFAULT false,
+    double_kills INTEGER DEFAULT 0,
+    triple_kills INTEGER DEFAULT 0,
+    quadra_kills INTEGER DEFAULT 0,
+    penta_kills INTEGER DEFAULT 0,
+    largest_killing_spree INTEGER DEFAULT 0,
+    largest_multi_kill INTEGER DEFAULT 0,
+
+    -- Objectives (individual)
+    baron_kills INTEGER DEFAULT 0,
+    dragon_kills INTEGER DEFAULT 0,
+    turret_kills INTEGER DEFAULT 0,
+    inhibitor_kills INTEGER DEFAULT 0,
+
+    -- Items (final build)
+    item0 INTEGER, item1 INTEGER, item2 INTEGER,
+    item3 INTEGER, item4 INTEGER, item5 INTEGER, item6 INTEGER,
+    items_purchased INTEGER DEFAULT 0,
+
+    -- Summoner spells
+    summoner1_id INTEGER,
+    summoner2_id INTEGER,
+    summoner1_casts INTEGER DEFAULT 0,
+    summoner2_casts INTEGER DEFAULT 0,
+
+    -- Spell casts (Q/W/E/R)
+    spell1_casts INTEGER DEFAULT 0,
+    spell2_casts INTEGER DEFAULT 0,
+    spell3_casts INTEGER DEFAULT 0,
+    spell4_casts INTEGER DEFAULT 0,
+
+    -- Runes (complete perks data as JSONB)
+    perks JSONB,
+
+    -- Advanced stats from challenges
+    kda DECIMAL(5,2),
+    kill_participation DECIMAL(5,4),
+    damage_per_minute DECIMAL(7,2),
+    gold_per_minute DECIMAL(6,2),
+    team_damage_percentage DECIMAL(5,4),
+    solo_kills INTEGER DEFAULT 0,
+    time_ccing_others INTEGER DEFAULT 0,
+
+    -- Result
+    win BOOLEAN NOT NULL,
+    team_early_surrendered BOOLEAN DEFAULT false,
+
     created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(match_id, player_id)
+    UNIQUE(match_id, puuid)
 );
+
+-- Note: Stores data for ALL participants (tracked and untracked)
+-- PUUID allows future matching to players added later
+```
+
+#### `match_team_stats`
+Stores team-level statistics for each match (objectives, bans).
+
+```sql
+CREATE TABLE match_team_stats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
+    riot_team_id INTEGER NOT NULL, -- 100=Blue, 200=Red
+    team_id UUID REFERENCES teams(id), -- Our tracked team (if participating)
+    win BOOLEAN NOT NULL,
+
+    -- Objectives (kill counts)
+    baron_kills INTEGER DEFAULT 0,
+    dragon_kills INTEGER DEFAULT 0,
+    herald_kills INTEGER DEFAULT 0, -- riftHerald
+    tower_kills INTEGER DEFAULT 0,
+    inhibitor_kills INTEGER DEFAULT 0,
+    atakhan_kills INTEGER DEFAULT 0, -- Season 15+ objective
+    horde_kills INTEGER DEFAULT 0,   -- Voidgrubs (Season 14-15)
+
+    -- First objective flags
+    first_baron BOOLEAN DEFAULT false,
+    first_dragon BOOLEAN DEFAULT false,
+    first_herald BOOLEAN DEFAULT false,
+    first_tower BOOLEAN DEFAULT false,
+    first_blood BOOLEAN DEFAULT false,
+    first_inhibitor BOOLEAN DEFAULT false,
+    first_atakhan BOOLEAN DEFAULT false,
+    first_horde BOOLEAN DEFAULT false,
+
+    -- Bans (stored as JSONB array: [{championId, pickTurn}, ...])
+    bans JSONB,
+
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(match_id, riot_team_id)
+);
+
+-- Ban phase mapping:
+-- Blue (100): Phase 1 = turns [1,3,5], Phase 2 = turns [8,10]
+-- Red (200):  Phase 1 = turns [2,4,6], Phase 2 = turns [7,9]
 ```
 
 #### `team_stats`
@@ -555,6 +688,62 @@ class RiotAPIClient:
             ranked_games=ranked_games,
             champion_pool=mastery
         )
+```
+
+### Match Data Extraction
+
+Complete match data extraction from Riot API to database. See `backend/utils/match_data_extractor.py` for implementation.
+
+```python
+from utils.match_data_extractor import store_complete_match_data
+
+# Extract and store complete match data
+match_data = riot_api.get_match('EUW1_7573575334')
+match = store_complete_match_data(match_data)
+
+# Automatically extracts and stores:
+# - Match metadata (tournament code, surrender flags, etc.)
+# - Team stats for both sides (objectives, bans)
+# - Participant stats for all 10 players (77 fields per player)
+```
+
+#### Key Extraction Points
+
+**Objectives** (from `info.teams[].objectives`):
+```python
+team_objectives = team_data['objectives']
+
+baron_kills = team_objectives['baron']['kills']
+dragon_kills = team_objectives['dragon']['kills']
+herald_kills = team_objectives['riftHerald']['kills']
+first_dragon = team_objectives['dragon']['first']
+```
+
+**Bans** (from `info.teams[].bans[]`):
+```python
+# Blue team (100): Bans at turns [1, 3, 5, 8, 10]
+# Red team (200): Bans at turns [2, 4, 6, 7, 9]
+
+blue_bans = [b for b in team_data['bans'] if b['pickTurn'] in [1, 3, 5, 8, 10]]
+red_bans = [b for b in team_data['bans'] if b['pickTurn'] in [2, 4, 6, 7, 9]]
+```
+
+**Participant Stats** (comprehensive data for each player):
+```python
+participant = match_data['info']['participants'][0]
+challenges = participant.get('challenges', {})
+
+# Store 77 fields including:
+- kills, deaths, assists, KDA
+- CS (total_minions + neutral_minions), gold (earned + spent)
+- Damage breakdown (physical/magic/true)
+- Vision (score, wards placed/killed, control wards)
+- Combat (multikills, solo kills, first blood/tower)
+- Items (final build + purchase count)
+- Summoners (spells + cast counts)
+- Abilities (Q/W/E/R cast counts)
+- Runes (complete perks as JSONB)
+- Advanced (kill participation, damage%, gold/min)
 ```
 
 ## 🚀 Implementation Roadmap

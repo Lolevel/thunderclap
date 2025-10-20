@@ -197,6 +197,22 @@ const RefreshProgressModal = ({ teamId, onComplete, onError }) => {
               </p>
               <p className="text-xs text-text-muted">Champions aktualisiert</p>
             </div>
+            {progress.ranks_updated !== undefined && (
+              <div className="text-center p-4 bg-accent/10 rounded-lg">
+                <p className="text-2xl font-bold text-accent">
+                  {progress.ranks_updated}
+                </p>
+                <p className="text-xs text-text-muted">Ränge aktualisiert</p>
+              </div>
+            )}
+            {progress.ranks_failed > 0 && (
+              <div className="text-center p-4 bg-warning/10 rounded-lg">
+                <p className="text-2xl font-bold text-warning">
+                  {progress.ranks_failed}
+                </p>
+                <p className="text-xs text-text-muted">Ränge fehlgeschlagen</p>
+              </div>
+            )}
           </div>
         )}
 

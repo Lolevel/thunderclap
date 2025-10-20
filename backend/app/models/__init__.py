@@ -8,6 +8,7 @@ from .match import Match, MatchParticipant, MatchTimelineData, MatchTeamStats
 from .draft import DraftPattern
 from .prediction import LineupPrediction
 from .scouting import ScoutingReport
+from .champion import Champion
 
 __all__ = [
     "Team",
@@ -23,4 +24,5 @@ __all__ = [
     "DraftPattern",
     "LineupPrediction",
     "ScoutingReport",
+    "Champion",
 ]
