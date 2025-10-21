@@ -8,8 +8,8 @@ services:
       POSTGRES_DB: pl_scout
       POSTGRES_USER: pl_scout_user
       POSTGRES_PASSWORD: pl_scout_password
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
@@ -48,7 +48,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       FLASK_ENV: development
     ports:
-      - "5000:5000"
+    - "0.0.0.0:5000:5000"
     volumes:
       - ./backend:/app
       - /app/venv  # Prevent overwriting venv from host
@@ -67,15 +67,14 @@ services:
     container_name: pl_scout_frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+    - "0.0.0.0:5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - backend
     environment:
-      # Use localhost since browser runs on host, not in container
-      - VITE_API_URL=http://localhost:5000/api
+    - VITE_API_URL=http://lolevel.de:5000/api
     command: npm run dev -- --host
 
 volumes:

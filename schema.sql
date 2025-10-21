@@ -1,11 +1,13 @@
 -- Prime League Scout Database Schema
 -- PostgreSQL 15+
--- Last Updated: 2024
+-- Last Updated: 2025-10-21
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ============================================================
 -- CORE TABLES
 -- ============================================================
+
 -- Teams table
 CREATE TABLE teams (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,31 +21,45 @@ CREATE TABLE teams (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
--- Players table
+
+-- Players table (UPDATED: Added soloq/flexq columns)
 CREATE TABLE players (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     summoner_name VARCHAR(100) NOT NULL,
     summoner_id VARCHAR(100) UNIQUE,
-    -- Nullable due to Riot API bug (Issue #1092, Aug 2025)
     puuid VARCHAR(100) UNIQUE NOT NULL,
-    -- summoner_level removed (no longer needed)
     profile_icon_id INTEGER,
     current_rank VARCHAR(20),
     current_lp INTEGER,
     peak_rank VARCHAR(20),
+    
+    -- Solo/Duo Queue rank
+    soloq_tier VARCHAR(20),
+    soloq_division VARCHAR(5),
+    soloq_lp INTEGER DEFAULT 0,
+    soloq_wins INTEGER DEFAULT 0,
+    soloq_losses INTEGER DEFAULT 0,
+    
+    -- Flex Queue rank
+    flexq_tier VARCHAR(20),
+    flexq_division VARCHAR(5),
+    flexq_lp INTEGER DEFAULT 0,
+    flexq_wins INTEGER DEFAULT 0,
+    flexq_losses INTEGER DEFAULT 0,
+    
+    rank_last_updated TIMESTAMP,
     region VARCHAR(10) DEFAULT 'EUW1',
     last_active TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
 -- Team rosters (many-to-many with roles)
 CREATE TABLE team_rosters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
     role VARCHAR(20),
-    -- Store: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot values)
-    -- Display: Top, Jungle, Mid, Bot, Support
     is_main_roster BOOLEAN DEFAULT true,
     join_date DATE,
     leave_date DATE,
@@ -51,15 +67,14 @@ CREATE TABLE team_rosters (
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(team_id, player_id, join_date)
 );
+
 -- Player champion statistics
--- Two entries per champion: one for 'tournament', one for 'soloqueue'
 CREATE TABLE player_champions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     player_id UUID REFERENCES players(id) ON DELETE CASCADE,
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
     game_type VARCHAR(20) NOT NULL,
-    -- 'tournament' or 'soloqueue'
     mastery_level INTEGER,
     mastery_points INTEGER,
     games_played INTEGER DEFAULT 0,
@@ -69,16 +84,31 @@ CREATE TABLE player_champions (
     kda_average DECIMAL(4, 2),
     cs_per_min DECIMAL(4, 2),
     pink_wards_per_game DECIMAL(4, 2),
-    -- NEW: Control wards placed per game
     last_played TIMESTAMP,
     updated_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(player_id, champion_id, game_type)
 );
+
+-- Champions table (NEW)
+CREATE TABLE champions (
+    id INTEGER PRIMARY KEY,
+    key VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    title VARCHAR(200),
+    roles TEXT[],
+    icon_url VARCHAR(500),
+    splash_url VARCHAR(500),
+    loading_url VARCHAR(500),
+    patch_version VARCHAR(20),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- ============================================================
 -- MATCH DATA TABLES
 -- ============================================================
--- Matches table
--- Note: is_scrim removed - scrims are never public via Riot API
+
+-- Matches table (UPDATED: Added new columns)
 CREATE TABLE matches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     match_id VARCHAR(50) UNIQUE NOT NULL,
@@ -87,46 +117,129 @@ CREATE TABLE matches (
     game_version VARCHAR(20),
     map_id INTEGER,
     queue_id INTEGER,
-    -- 0 for custom, 420 for ranked solo
+    platform_id VARCHAR(10) DEFAULT 'EUW1',
     is_tournament_game BOOLEAN DEFAULT false,
     tournament_name VARCHAR(100),
+    tournament_code VARCHAR(100),
+    game_ended_in_surrender BOOLEAN DEFAULT false,
+    game_ended_in_early_surrender BOOLEAN DEFAULT false,
     winning_team_id UUID REFERENCES teams(id),
     losing_team_id UUID REFERENCES teams(id),
     created_at TIMESTAMP DEFAULT NOW()
 );
--- Match participants (individual player performance)
+
+-- Match participants (UPDATED: Significantly expanded)
 CREATE TABLE match_participants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id),
     team_id UUID REFERENCES teams(id),
+    
+    -- Identity
+    puuid VARCHAR(100) NOT NULL,
+    summoner_name VARCHAR(100),
+    riot_game_name VARCHAR(50),
+    riot_tagline VARCHAR(10),
+    
+    -- Champion & Position
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
-    role VARCHAR(20),
-    lane VARCHAR(20),
     team_position VARCHAR(20),
-    -- Riot's auto-detected position (TOP/JUNGLE/MIDDLE/BOTTOM/UTILITY)
-    kills INTEGER,
-    deaths INTEGER,
-    assists INTEGER,
+    individual_position VARCHAR(20),
+    lane VARCHAR(20),
+    role VARCHAR(20),
+    riot_team_id INTEGER NOT NULL,
+    participant_id INTEGER,
+    
+    -- Core stats
+    kills INTEGER DEFAULT 0,
+    deaths INTEGER DEFAULT 0,
+    assists INTEGER DEFAULT 0,
+    
+    -- CS & Gold
+    total_minions_killed INTEGER DEFAULT 0,
+    neutral_minions_killed INTEGER DEFAULT 0,
     cs_total INTEGER,
-    cs_per_min DECIMAL(4, 2),
-    gold_earned INTEGER,
-    damage_dealt INTEGER,
-    damage_taken INTEGER,
-    vision_score INTEGER,
-    wards_placed INTEGER,
-    control_wards_placed INTEGER,
-    -- NEW: Pink wards placed
-    wards_destroyed INTEGER,
-    first_blood BOOLEAN,
-    first_tower BOOLEAN,
-    win BOOLEAN,
+    cs_per_min DECIMAL(5, 2),
+    gold_earned INTEGER DEFAULT 0,
+    gold_spent INTEGER DEFAULT 0,
+    
+    -- Damage
+    total_damage_dealt_to_champions INTEGER DEFAULT 0,
+    physical_damage_dealt_to_champions INTEGER DEFAULT 0,
+    magic_damage_dealt_to_champions INTEGER DEFAULT 0,
+    true_damage_dealt_to_champions INTEGER DEFAULT 0,
+    total_damage_taken INTEGER DEFAULT 0,
+    damage_self_mitigated INTEGER DEFAULT 0,
+    
+    -- Vision
+    vision_score INTEGER DEFAULT 0,
+    wards_placed INTEGER DEFAULT 0,
+    wards_killed INTEGER DEFAULT 0,
+    control_wards_placed INTEGER DEFAULT 0,
+    vision_score_per_min DECIMAL(5, 2),
+    
+    -- Combat achievements
+    first_blood BOOLEAN DEFAULT false,
+    first_blood_assist BOOLEAN DEFAULT false,
+    first_tower BOOLEAN DEFAULT false,
+    first_tower_assist BOOLEAN DEFAULT false,
+    double_kills INTEGER DEFAULT 0,
+    triple_kills INTEGER DEFAULT 0,
+    quadra_kills INTEGER DEFAULT 0,
+    penta_kills INTEGER DEFAULT 0,
+    largest_killing_spree INTEGER DEFAULT 0,
+    largest_multi_kill INTEGER DEFAULT 0,
+    
+    -- Objectives
+    baron_kills INTEGER DEFAULT 0,
+    dragon_kills INTEGER DEFAULT 0,
+    turret_kills INTEGER DEFAULT 0,
+    inhibitor_kills INTEGER DEFAULT 0,
+    
+    -- Items
+    item0 INTEGER,
+    item1 INTEGER,
+    item2 INTEGER,
+    item3 INTEGER,
+    item4 INTEGER,
+    item5 INTEGER,
+    item6 INTEGER,
+    items_purchased INTEGER DEFAULT 0,
+    
+    -- Summoner spells
+    summoner1_id INTEGER,
+    summoner2_id INTEGER,
+    summoner1_casts INTEGER DEFAULT 0,
+    summoner2_casts INTEGER DEFAULT 0,
+    
+    -- Spell casts
+    spell1_casts INTEGER DEFAULT 0,
+    spell2_casts INTEGER DEFAULT 0,
+    spell3_casts INTEGER DEFAULT 0,
+    spell4_casts INTEGER DEFAULT 0,
+    
+    -- Runes
+    perks JSONB,
+    
+    -- Advanced stats
+    kda DECIMAL(5, 2),
+    kill_participation DECIMAL(5, 4),
+    damage_per_minute DECIMAL(7, 2),
+    gold_per_minute DECIMAL(6, 2),
+    team_damage_percentage DECIMAL(5, 4),
+    solo_kills INTEGER DEFAULT 0,
+    time_ccing_others INTEGER DEFAULT 0,
+    
+    -- Result
+    win BOOLEAN NOT NULL,
+    team_early_surrendered BOOLEAN DEFAULT false,
+    
     created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(match_id, player_id)
+    UNIQUE(match_id, puuid)
 );
--- Match timeline data (cached from Riot API)
--- Only store for last 10 tournament games per team
+
+-- Match timeline data
 CREATE TABLE match_timeline_data (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     match_id UUID REFERENCES matches(id) ON DELETE CASCADE UNIQUE,
@@ -135,23 +248,56 @@ CREATE TABLE match_timeline_data (
     xp_diff_at_10 INTEGER,
     xp_diff_at_15 INTEGER,
     first_blood_time INTEGER,
-    -- seconds into game
     first_tower_time INTEGER,
     first_dragon_time INTEGER,
     first_herald_time INTEGER,
     timeline_data JSONB,
-    -- full timeline for advanced analysis
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Match team stats (NEW)
+CREATE TABLE match_team_stats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
+    riot_team_id INTEGER NOT NULL,
+    team_id UUID REFERENCES teams(id),
+    win BOOLEAN NOT NULL,
+    
+    -- Objectives
+    baron_kills INTEGER DEFAULT 0,
+    dragon_kills INTEGER DEFAULT 0,
+    herald_kills INTEGER DEFAULT 0,
+    tower_kills INTEGER DEFAULT 0,
+    inhibitor_kills INTEGER DEFAULT 0,
+    atakhan_kills INTEGER DEFAULT 0,
+    horde_kills INTEGER DEFAULT 0,
+    
+    -- First objectives
+    first_baron BOOLEAN DEFAULT false,
+    first_dragon BOOLEAN DEFAULT false,
+    first_herald BOOLEAN DEFAULT false,
+    first_tower BOOLEAN DEFAULT false,
+    first_blood BOOLEAN DEFAULT false,
+    first_inhibitor BOOLEAN DEFAULT false,
+    first_atakhan BOOLEAN DEFAULT false,
+    first_horde BOOLEAN DEFAULT false,
+    
+    -- Bans
+    bans JSONB,
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(match_id, riot_team_id)
+);
+
 -- ============================================================
 -- STATISTICS & ANALYSIS TABLES
 -- ============================================================
+
 -- Team statistics (aggregated)
 CREATE TABLE team_stats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     stat_type VARCHAR(50),
-    -- 'tournament', 'all'
     games_played INTEGER DEFAULT 0,
     wins INTEGER DEFAULT 0,
     losses INTEGER DEFAULT 0,
@@ -164,35 +310,28 @@ CREATE TABLE team_stats (
     average_gold_diff_at_10 INTEGER,
     average_gold_diff_at_15 INTEGER,
     comeback_win_rate DECIMAL(5, 2),
-    -- wins when behind at 15
     updated_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(team_id, stat_type)
 );
+
 -- Draft patterns (ban/pick tendencies)
--- Tracks: Team's favorite bans by rotation, bans against them, first pick priorities, which player picked what
 CREATE TABLE draft_patterns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     player_id UUID REFERENCES players(id),
-    -- NEW: Track which player picked the champion
     champion_id INTEGER NOT NULL,
     champion_name VARCHAR(50),
-    -- NEW: Champion name for easier display
     action_type VARCHAR(20),
-    -- 'ban', 'pick'
     ban_rotation INTEGER,
-    -- NEW: 1, 2, 3 for ban phases (rotation 1/2/3)
     is_first_pick BOOLEAN DEFAULT false,
-    -- NEW: TRUE if picked on first pick
     pick_order INTEGER,
-    -- 1-5 for picks
     side VARCHAR(10),
-    -- 'blue', 'red', 'both' (for aggregated stats)
     frequency INTEGER DEFAULT 1,
     winrate DECIMAL(5, 2),
     last_used TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
 -- Player performance timeline (daily aggregates)
 CREATE TABLE player_performance_timeline (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -207,9 +346,11 @@ CREATE TABLE player_performance_timeline (
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(player_id, date)
 );
+
 -- ============================================================
 -- PREDICTION & SCOUTING TABLES
 -- ============================================================
+
 -- Lineup predictions
 CREATE TABLE lineup_predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -222,9 +363,9 @@ CREATE TABLE lineup_predictions (
     predicted_support UUID REFERENCES players(id),
     confidence_score DECIMAL(5, 2),
     prediction_factors JSONB,
-    -- detailed breakdown of prediction
     created_at TIMESTAMP DEFAULT NOW()
 );
+
 -- Scouting reports
 CREATE TABLE scouting_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -232,50 +373,44 @@ CREATE TABLE scouting_reports (
     opponent_team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
     match_date DATE,
     report_data JSONB,
-    -- comprehensive report as JSON
-    key_threats TEXT [],
-    suggested_bans VARCHAR(50) [],
-    win_conditions TEXT [],
+    key_threats TEXT[],
+    suggested_bans VARCHAR(50)[],
+    win_conditions TEXT[],
     created_by UUID REFERENCES players(id),
     created_at TIMESTAMP DEFAULT NOW()
 );
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
+
 -- Player lookups
 CREATE INDEX idx_players_summoner_name ON players(summoner_name);
 CREATE INDEX idx_players_puuid ON players(puuid);
 CREATE INDEX idx_players_summoner_id ON players(summoner_id);
+
 -- Match queries
 CREATE INDEX idx_matches_game_creation ON matches(game_creation DESC);
 CREATE INDEX idx_matches_tournament ON matches(is_tournament_game, game_creation DESC);
 CREATE INDEX idx_matches_queue_id ON matches(queue_id);
 CREATE INDEX idx_match_participants_player ON match_participants(player_id, match_id);
 CREATE INDEX idx_match_participants_team ON match_participants(team_id, match_id);
+CREATE INDEX idx_match_participants_puuid ON match_participants(puuid);
+
 -- Team statistics
 CREATE INDEX idx_team_rosters_active ON team_rosters(team_id, is_main_roster)
 WHERE leave_date IS NULL;
 CREATE INDEX idx_team_rosters_player ON team_rosters(player_id);
 CREATE INDEX idx_draft_patterns_team ON draft_patterns(team_id, action_type, frequency DESC);
 CREATE INDEX idx_team_stats_team ON team_stats(team_id, stat_type);
+
 -- Performance tracking
-CREATE INDEX idx_player_champions_recent ON player_champions(player_id, games_played_recent DESC);
 CREATE INDEX idx_player_champions_mastery ON player_champions(player_id, mastery_points DESC);
 CREATE INDEX idx_performance_timeline ON player_performance_timeline(player_id, date DESC);
+
 -- Timeline data
 CREATE INDEX idx_match_timeline_match ON match_timeline_data(match_id);
+
 -- Predictions & Reports
 CREATE INDEX idx_lineup_predictions_team ON lineup_predictions(team_id, match_date DESC);
 CREATE INDEX idx_scouting_reports_opponent ON scouting_reports(opponent_team_id, match_date DESC);
--- ============================================================
--- COMMENTS
--- ============================================================
-COMMENT ON TABLE matches IS 'All custom games (queue_id=0) visible via API are tournament games - scrims are never public';
-COMMENT ON TABLE match_timeline_data IS 'Only store timeline data for last 10 tournament games per team to respect API rate limits';
-COMMENT ON COLUMN team_rosters.role IS 'Store as Riot values (TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY) but display as Top, Jungle, Mid, Bot, Support';
-COMMENT ON COLUMN match_participants.team_position IS 'Riot auto-detected position - may differ from assigned role';
-COMMENT ON TABLE lineup_predictions IS 'Prediction weights: 50% tournament history, 30% role coverage, 18% solo queue activity, 2% performance';
-COMMENT ON TABLE player_champions IS 'Two entries per champion: one for tournament games, one for solo queue. Solo Queue shows top 20 most played this season';
-COMMENT ON COLUMN player_champions.pink_wards_per_game IS 'Control wards (pink wards) placed per game';
-COMMENT ON COLUMN match_participants.control_wards_placed IS 'Control wards (pink wards) placed in this match';
-COMMENT ON TABLE draft_patterns IS 'Tracks team ban priorities, bans against them, first pick priorities, and which player picked which champion';
