@@ -242,9 +242,24 @@ def store_complete_match_data(
 
     logger.info(f"Created {len(participant_records)} participant records")
 
-    # 4. LINK PARTICIPANTS TO TRACKED TEAMS (if applicable)
+    # 4. LINK PARTICIPANTS TO PLAYERS (ALWAYS - not just for tracked teams)
+    from app.models.player import Player
+
+    for participant in participant_records:
+        # Try to find player by PUUID first
+        player = Player.query.filter_by(puuid=participant.puuid).first()
+
+        # If not found by PUUID, try by riot_game_name + riot_tagline
+        if not player and participant.riot_game_name and participant.riot_tagline:
+            summoner_name = f"{participant.riot_game_name}#{participant.riot_tagline}"
+            player = Player.query.filter_by(summoner_name=summoner_name).first()
+
+        if player:
+            participant.player_id = player.id
+            logger.debug(f"Linked participant {participant.riot_game_name}#{participant.riot_tagline} to player {player.id}")
+
+    # 5. LINK PARTICIPANTS TO TRACKED TEAMS (if applicable)
     if tracked_team_puuids:
-        from app.models.player import Player
         from app.models.team import Team
 
         # Find which team won
@@ -261,16 +276,17 @@ def store_complete_match_data(
 
         logger.info(f"Blue team overlap: {blue_overlap}, Red team overlap: {red_overlap}")
 
-        # Link participants to players
+        # Link participants to their teams based on player memberships
         for participant in participant_records:
-            player = Player.query.filter_by(puuid=participant.puuid).first()
-            if player:
-                participant.player_id = player.id
-                # Link to team if player is on a team
-                if player.team_memberships:
-                    participant.team_id = player.team_memberships[0].team_id
+            if participant.player_id:
+                player = Player.query.get(participant.player_id)
+                if player and player.team_memberships:
+                    # Use the first active team membership
+                    active_membership = next((m for m in player.team_memberships if m.leave_date is None), None)
+                    if active_membership:
+                        participant.team_id = active_membership.team_id
 
-    # 5. COMMIT ALL CHANGES
+    # 6. COMMIT ALL CHANGES
     db.session.commit()
 
     logger.info(f"Successfully stored complete match data for {match.match_id}")

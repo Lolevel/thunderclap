@@ -18,8 +18,6 @@ function App() {
             <Route path="teams/:id" element={<TeamDetail />} />
             <Route path="players" element={<Players />} />
             <Route path="players/:id" element={<PlayerDetail />} />
-            {/* Redirect /reports to dashboard for now */}
-            <Route path="reports" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </Router>

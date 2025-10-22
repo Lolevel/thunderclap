@@ -459,7 +459,7 @@ def refresh_team_stats(team_id):
     Request body:
         {
             "count_per_player": 50 (optional),
-            "min_players_together": 4 (optional)
+            "min_players_together": 3 (optional)
         }
 
     Returns:
@@ -474,7 +474,7 @@ def refresh_team_stats(team_id):
 
     data = request.get_json() or {}
     count_per_player = data.get("count_per_player", 50)
-    min_players_together = data.get("min_players_together", 4)
+    min_players_together = data.get("min_players_together", 3)
 
     try:
         from app.services import RiotAPIClient, MatchFetcher
@@ -553,7 +553,14 @@ def refresh_team_stats(team_id):
 @bp.route("/teams/<team_id>/refresh-stream", methods=["GET"])
 def refresh_team_stats_stream(team_id):
     """
-    Stream progress updates for team stats refresh using Server-Sent Events (SSE)
+    OPTIMIZED: Stream progress updates for team stats refresh using Server-Sent Events (SSE)
+
+    Flow:
+    1. Collect all game IDs from all players (fast)
+    2. Check which games exist in DB (batch query)
+    3. Fetch only missing games from Riot API
+    4. Link games to team
+    5. Background: Fetch individual player stats
 
     Returns:
         Server-Sent Events stream with progress updates
@@ -570,184 +577,304 @@ def refresh_team_stats_stream(team_id):
         try:
             from app.services import RiotAPIClient, MatchFetcher
             from app.services.stats_calculator import StatsCalculator
+            from app.utils.community_dragon import sync_champions_from_community_dragon
+            from app.models.champion import Champion
 
-            # Send initial status
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Starte Aktualisierung...'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Starte Aktualisierung...', 'step': 'init'}})}\n\n"
 
-            # 1. Fetch matches with progress updates
+            # ========================================
+            # STEP 0: Check and sync champion data if DB is empty
+            # ========================================
+            champion_count = Champion.query.count()
+            if champion_count == 0:
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Lade Champion-Daten von Community Dragon...', 'step': 'sync_champions'}})}\n\n"
+
+                sync_result = sync_champions_from_community_dragon()
+                current_app.logger.info(f"Champion sync: {sync_result}")
+
+                created_count = sync_result.get('created', 0)
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{created_count} Champions geladen', 'step': 'champions_synced'}})}\n\n"
+
             riot_client = RiotAPIClient()
             match_fetcher = MatchFetcher(riot_client)
 
             active_roster = [r for r in team.rosters if r.leave_date is None]
             total_players = len(active_roster)
-
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Lade Matches...', 'total_players': total_players, 'players_processed': 0}})}\n\n"
-
-            matches_fetched = 0
             team_player_puuids = {r.player.puuid for r in active_roster}
             team_player_ids = {r.player_id for r in active_roster}
 
-            # Debug: Log team PUUIDs
-            current_app.logger.info(f'Team {team.name} PUUIDs: {team_player_puuids}')
-            processed_match_ids = set()
+            # ========================================
+            # STEP 1: Collect TOURNAMENT game IDs ONLY (FAST & EFFICIENT)
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Sammle Tournament Game-IDs...', 'step': 'collect_ids', 'total_players': total_players}})}\n\n"
+
+            all_match_ids = set()
+            player_match_map = {}  # Track which player has which matches
 
             for idx, roster_entry in enumerate(active_roster):
                 player = roster_entry.player
-
-                yield f"data: {json.dumps({'type': 'progress', 'data': {'current_player': player.summoner_name, 'players_processed': idx}})}\n\n"
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'current_player': player.summoner_name, 'players_processed': idx, 'step': 'collect_ids'}})}\n\n"
 
                 try:
-                    # Get tournament match history (Prime League games)
-                    # Using type=tourney filter to get only tournament games
-                    match_ids = riot_client.get_match_history(player.puuid, count=100, match_type='tourney')
+                    # Get ONLY tournament match IDs using type=tourney filter
+                    match_ids_tourney = riot_client.get_match_history(
+                        player.puuid,
+                        count=100,
+                        match_type='tourney'
+                    ) or []
 
-                    current_app.logger.info(f'Found {len(match_ids) if match_ids else 0} tournament games for {player.summoner_name}')
+                    # Store for this player
+                    player_match_map[player.puuid] = match_ids_tourney
+                    all_match_ids.update(match_ids_tourney)
 
-                    if match_ids:
-                        for match_id in match_ids:
-                            if match_id in processed_match_ids:
-                                continue
-
-                            processed_match_ids.add(match_id)
-
-                            # Check if exists
-                            from app.models import Match as MatchModel
-                            existing_match = MatchModel.query.filter_by(match_id=match_id).first()
-
-                            if existing_match:
-                                # Already linked to this team?
-                                if existing_match.winning_team_id == team.id or existing_match.losing_team_id == team.id:
-                                    continue
-
-                                # Check if we should link it
-                                team_participants = [p for p in existing_match.participants if p.player_id in team_player_ids]
-
-                                if len(team_participants) >= 3:
-                                    team_won = team_participants[0].win if team_participants else False
-                                    if team_won:
-                                        existing_match.winning_team_id = team.id
-                                    else:
-                                        existing_match.losing_team_id = team.id
-
-                                    for participant in team_participants:
-                                        participant.team_id = team.id
-
-                                    matches_fetched += 1
-                                    yield f"data: {json.dumps({'type': 'progress', 'data': {'matches_fetched': matches_fetched, 'message': f'Match gefunden: {match_id[:8]}...'}})}\n\n"
-
-                                continue
-
-                            # Fetch new match
-                            match_data = riot_client.get_match(match_id)
-                            if not match_data:
-                                continue
-
-                            # Count team players
-                            participants = match_data.get('info', {}).get('participants', [])
-
-                            # Debug: Log all PUUIDs in match
-                            match_puuids = [p.get('puuid') for p in participants]
-                            current_app.logger.info(f'Match {match_id[:8]} PUUIDs: {match_puuids}')
-
-                            # Count matches
-                            team_players_in_match = sum(1 for p in participants if p.get('puuid') in team_player_puuids)
-
-                            # Debug: Log which PUUIDs matched
-                            matched_puuids = [p.get('puuid') for p in participants if p.get('puuid') in team_player_puuids]
-                            current_app.logger.info(f'Match {match_id[:8]}: {team_players_in_match} team players found - Matched: {matched_puuids}')
-
-                            if team_players_in_match >= 3:
-                                # Store match
-                                match = match_fetcher._store_match(match_data)
-
-                                # Assign to team
-                                team_won = None
-                                for participant_data in participants:
-                                    if participant_data.get('puuid') in team_player_puuids:
-                                        team_won = participant_data.get('win', False)
-                                        break
-
-                                if team_won:
-                                    match.winning_team_id = team.id
-                                else:
-                                    match.losing_team_id = team.id
-
-                                matches_fetched += 1
-                                yield f"data: {json.dumps({'type': 'progress', 'data': {'matches_fetched': matches_fetched, 'message': f'Neues Match importiert: {match_id[:8]}...'}})}\n\n"
+                    current_app.logger.info(f'{player.summoner_name}: {len(match_ids_tourney)} tournament games found')
 
                 except Exception as e:
                     if '429' in str(e) or 'rate limit' in str(e).lower():
-                        yield f"data: {json.dumps({'type': 'rate_limit', 'wait_seconds': 120, 'message': 'Rate Limit erreicht - Warte 2 Minuten...'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'rate_limit', 'wait_seconds': 120, 'message': 'Rate Limit - Warte 2 Minuten...'})}\n\n"
                         time.sleep(120)
                     else:
-                        current_app.logger.error(f"Error fetching matches for {player.summoner_name}: {e}")
+                        current_app.logger.error(f"Error fetching match IDs for {player.summoner_name}: {e}")
 
-            db.session.commit()
+            total_match_ids = len(all_match_ids)
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{total_match_ids} Games gefunden', 'step': 'ids_collected', 'total_match_ids': total_match_ids}})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'players_processed': total_players, 'message': 'Verknüpfe Matches...'}})}\n\n"
+            # ========================================
+            # STEP 1.5: PRE-FILTER - Only keep games where 3+ team players participated
+            # This MUST happen BEFORE DB check to avoid wasting DB queries
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Filtere Solo-Queue Games...', 'step': 'pre_filter'}})}\n\n"
 
-            # 2. Link remaining unlinked matches
-            matches_linked = 0
-            unlinked_matches = Match.query.filter_by(
-                is_tournament_game=True,
-                winning_team_id=None,
-                losing_team_id=None
+            # Count how many players from our team have each match_id
+            match_id_player_counts = {}
+            for player_puuid, match_ids in player_match_map.items():
+                for match_id in match_ids:
+                    match_id_player_counts[match_id] = match_id_player_counts.get(match_id, 0) + 1
+
+            # Filter: Only keep games where 3+ team players participated
+            # This is our minimum requirement for team games
+            team_match_ids = {mid for mid, count in match_id_player_counts.items() if count >= 3}
+            soloq_filtered = len(all_match_ids) - len(team_match_ids)
+
+            current_app.logger.info(f'Pre-filter: {len(all_match_ids)} total IDs → {len(team_match_ids)} potential team games (filtered out {soloq_filtered} solo/duo games)')
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{soloq_filtered} Solo-Queue Games herausgefiltert', 'step': 'pre_filtered', 'filtered': soloq_filtered, 'remaining': len(team_match_ids)}})}\n\n"
+
+            # Replace all_match_ids with filtered list
+            all_match_ids = team_match_ids
+
+            # ========================================
+            # STEP 2: Check which games exist in DB (BATCH QUERY)
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Prüfe Datenbank...', 'step': 'check_db'}})}\n\n"
+
+            existing_matches = Match.query.filter(Match.match_id.in_(all_match_ids)).all()
+            existing_match_ids = {m.match_id for m in existing_matches}
+            missing_match_ids = all_match_ids - existing_match_ids
+
+            current_app.logger.info(f'DB Check: {len(all_match_ids)} team game IDs, {len(existing_match_ids)} exist in DB, {len(missing_match_ids)} missing')
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{len(existing_match_ids)} Games in DB, {len(missing_match_ids)} neue', 'existing': len(existing_match_ids), 'missing': len(missing_match_ids), 'step': 'db_checked'}})}\n\n"
+
+            # ========================================
+            # STEP 3: Fetch ONLY missing games from Riot API
+            # ========================================
+            matches_fetched = 0
+
+            if missing_match_ids:
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'Lade {len(missing_match_ids)} neue Games...', 'step': 'fetch_missing'}})}\n\n"
+
+                for idx, match_id in enumerate(missing_match_ids):
+                    try:
+                        # Fetch match data
+                        match_data = riot_client.get_match(match_id)
+                        if not match_data:
+                            continue
+
+                        # Count team players in this match
+                        match_info = match_data.get('info', {})
+                        participants = match_info.get('participants', [])
+                        team_players_in_match = sum(1 for p in participants if p.get('puuid') in team_player_puuids)
+
+                        # Only store if 3+ team players participated
+                        if team_players_in_match >= 3:
+                            # Store match
+                            match = match_fetcher._store_match(match_data)
+                            matches_fetched += 1
+
+                            if matches_fetched % 5 == 0:
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} Games geladen...', 'matches_fetched': matches_fetched, 'step': 'fetch_missing'}})}\n\n"
+
+                    except Exception as e:
+                        if '429' in str(e) or 'rate limit' in str(e).lower():
+                            yield f"data: {json.dumps({'type': 'rate_limit', 'wait_seconds': 120, 'message': 'Rate Limit - Warte 2 Minuten...'})}\n\n"
+                            time.sleep(120)
+                        else:
+                            current_app.logger.error(f"Error fetching match {match_id}: {e}")
+
+                db.session.commit()
+
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} neue Games gespeichert', 'matches_fetched': matches_fetched, 'step': 'fetch_complete'}})}\n\n"
+
+            # ========================================
+            # STEP 4A: First, link participants to players (for existing matches)
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Verknüpfe Participants mit Spielern...', 'step': 'link_participants'}})}\n\n"
+
+            participants_linked = 0
+            all_tournament_matches = Match.query.filter(
+                Match.is_tournament_game == True,
+                Match.match_id.in_(all_match_ids)
             ).all()
 
-            for match in unlinked_matches:
+            for match in all_tournament_matches:
+                for participant in match.participants:
+                    if participant.player_id:
+                        continue  # Already linked
+
+                    # Try to find player by PUUID
+                    player = Player.query.filter_by(puuid=participant.puuid).first()
+
+                    # Fallback: try by riot_game_name + riot_tagline
+                    if not player and participant.riot_game_name and participant.riot_tagline:
+                        summoner_name = f"{participant.riot_game_name}#{participant.riot_tagline}"
+                        player = Player.query.filter_by(summoner_name=summoner_name).first()
+
+                    if player:
+                        participant.player_id = player.id
+                        participants_linked += 1
+
+            db.session.commit()
+            current_app.logger.info(f"Linked {participants_linked} participants to players")
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{participants_linked} Participants verknüpft', 'step': 'participants_linked'}})}\n\n"
+
+            # ========================================
+            # STEP 4B: Link ALL tournament games to team (existing + new)
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Verknüpfe Games mit Team...', 'step': 'link_matches'}})}\n\n"
+
+            matches_linked = 0
+
+            for match in all_tournament_matches:
+                # ALWAYS re-check and update team assignment
+                # This ensures fixes to the code are applied to existing matches
+
+                # Count team players in this match (now with updated player_ids!)
                 team_participants = [p for p in match.participants if p.player_id in team_player_ids]
 
                 if len(team_participants) >= 3:
                     team_won = team_participants[0].win if team_participants else False
+
+                    # Update match team assignment
+                    old_winning = match.winning_team_id
+                    old_losing = match.losing_team_id
+
                     if team_won:
                         match.winning_team_id = team.id
+                        match.losing_team_id = None  # Clear opposite
                     else:
                         match.losing_team_id = team.id
+                        match.winning_team_id = None  # Clear opposite
 
+                    # Set team_id on participants
                     for participant in team_participants:
                         participant.team_id = team.id
 
-                    matches_linked += 1
+                    # Only count as "linked" if it wasn't already linked to THIS team
+                    if old_winning != team.id and old_losing != team.id:
+                        matches_linked += 1
 
             db.session.commit()
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_linked} Games verknüpft', 'matches_linked': matches_linked, 'step': 'link_complete'}})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'matches_linked': matches_linked, 'message': 'Berechne Statistiken...'}})}\n\n"
+            # ========================================
+            # STEP 5: Calculate team stats
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Berechne Team-Statistiken...', 'step': 'calc_stats'}})}\n\n"
 
-            # 3. Calculate stats
             stats_calculator = StatsCalculator()
             stats_result = stats_calculator.calculate_all_stats_for_team(team)
 
-            # 4. Fetch player ranks
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Aktualisiere Spieler-Ränge...'}})}\n\n"
+            # ========================================
+            # STEP 6: Fetch player ranks
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Aktualisiere Spieler-Ränge...', 'step': 'fetch_ranks'}})}\n\n"
 
             from app.utils.rank_fetcher import fetch_player_rank
             ranks_updated = 0
             ranks_failed = 0
 
-            for idx, roster_entry in enumerate(active_roster):
+            for roster_entry in active_roster:
                 if roster_entry.player:
                     player = roster_entry.player
-                    yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'Lade Rang: {player.summoner_name}...'}})}\n\n"
-
                     try:
                         if fetch_player_rank(player, riot_client):
                             ranks_updated += 1
-
-                            # Show rank in progress message
                             if player.soloq_tier:
                                 rank_display = f"{player.soloq_tier} {player.soloq_division or ''}"
-                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{player.summoner_name}: {rank_display}'}})}\n\n"
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{player.summoner_name}: {rank_display}', 'step': 'fetch_ranks'}})}\n\n"
                         else:
                             ranks_failed += 1
                     except Exception as e:
                         current_app.logger.error(f"Error fetching rank for {player.summoner_name}: {e}")
                         ranks_failed += 1
 
-            # Send completion
-            yield f"data: {json.dumps({'type': 'complete', 'data': {'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'players_processed': total_players, 'ranks_updated': ranks_updated, 'ranks_failed': ranks_failed}})}\n\n"
+            # ========================================
+            # STEP 7: BACKGROUND - Fetch individual player tournament stats
+            # ========================================
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Lade Spieler-Statistiken im Hintergrund...', 'step': 'player_stats_background'}})}\n\n"
+
+            # This runs in background but with progress updates
+            # For each player, fetch their individual tournament games (not just team games)
+            # This is for player profile stats
+
+            # Send completion with team stats
+            yield f"data: {json.dumps({'type': 'complete', 'data': {'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'players_processed': total_players, 'ranks_updated': ranks_updated, 'ranks_failed': ranks_failed, 'message': 'Team-Aktualisierung abgeschlossen!'}})}\n\n"
+
+            # Continue with individual player stats in background using PlayerMatchService
+            from app.services.player_match_service import PlayerMatchService
+            player_service = PlayerMatchService(riot_client)
+
+            total_player_games_fetched = 0
+
+            for idx, roster_entry in enumerate(active_roster):
+                player = roster_entry.player
+                current_player_msg = f'Lade alle PL-Games für {player.summoner_name}...'
+                yield f"data: {json.dumps({'type': 'background_progress', 'data': {'message': current_player_msg, 'player': player.summoner_name, 'player_index': idx, 'total_players': total_players}})}\n\n"
+
+                try:
+                    # Fetch ALL tournament games for this player (not just team games)
+                    stats = player_service.fetch_all_player_tournament_games(
+                        player=player,
+                        max_games=100,
+                        force_refresh=False
+                    )
+
+                    if stats['new_games'] > 0:
+                        total_player_games_fetched += stats['new_games']
+                        new_games_count = stats['new_games']
+                        existing_games_count = stats['existing_games']
+                        message = f'{player.summoner_name}: {new_games_count} neue PL-Games ({existing_games_count} bereits vorhanden)'
+                        yield f"data: {json.dumps({'type': 'background_progress', 'data': {'message': message, 'player': player.summoner_name, 'player_index': idx, 'total_players': total_players}})}\n\n"
+
+                        # Recalculate player champion stats
+                        stats_calculator.calculate_player_champion_stats(player)
+                        stats_msg = f'{player.summoner_name}: Champion-Stats aktualisiert'
+                        yield f"data: {json.dumps({'type': 'background_progress', 'data': {'message': stats_msg, 'player': player.summoner_name, 'player_index': idx, 'total_players': total_players}})}\n\n"
+                    else:
+                        existing_games_count = stats['existing_games']
+                        message = f'{player.summoner_name}: Keine neuen Games ({existing_games_count} bereits vorhanden)'
+                        yield f"data: {json.dumps({'type': 'background_progress', 'data': {'message': message, 'player': player.summoner_name, 'player_index': idx, 'total_players': total_players}})}\n\n"
+
+                except Exception as e:
+                    current_app.logger.error(f"Error fetching player stats for {player.summoner_name}: {e}")
+                    if '429' in str(e) or 'rate limit' in str(e).lower():
+                        yield f"data: {json.dumps({'type': 'rate_limit', 'wait_seconds': 120, 'message': 'Rate Limit - Warte 2 Minuten...'})}\n\n"
+                        time.sleep(120)
+
+            # Final background completion
+            yield f"data: {json.dumps({'type': 'background_complete', 'data': {'message': f'Alle Spieler-Statistiken geladen! ({total_player_games_fetched} zusätzliche Games)'}})}\n\n"
 
         except Exception as e:
-            current_app.logger.error(f"Error in refresh stream: {str(e)}")
+            current_app.logger.error(f"Error in refresh stream: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return Response(
@@ -765,7 +892,7 @@ def refresh_team_stats_stream(team_id):
 def get_team_matches(team_id):
     """
     Get match history for a team (Prime League games only)
-    Includes games where at least 4 team members participated
+    Includes games where at least 3 team members participated
 
     Query params:
         limit: Number of matches (default: 20)
@@ -834,14 +961,24 @@ def get_team_matches(team_id):
         result_matches = []
 
         for match in matches:
-            # Get all participants for this match
-            participants = MatchParticipant.query.filter_by(match_id=match.id).all()
+            # Get all participants for this match, ordered by riot_team_id and participant_id
+            participants = MatchParticipant.query.filter_by(match_id=match.id).order_by(
+                MatchParticipant.riot_team_id,
+                MatchParticipant.participant_id
+            ).all()
 
             # Count team players in this match
             team_players_count = sum(1 for p in participants if p.player_id in team_player_ids)
 
             # Determine if team won
             team_won = match.winning_team_id == team.id
+
+            # Determine which riot_team_id our team played on
+            our_riot_team_id = None
+            for p in participants:
+                if p.player_id in team_player_ids:
+                    our_riot_team_id = p.riot_team_id
+                    break
 
             # Build participant data with enriched champion info
             from app.utils.champion_helper import batch_enrich_champions
@@ -850,9 +987,30 @@ def get_team_matches(team_id):
             champion_ids = [p.champion_id for p in participants]
             champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
 
-            participant_data = []
+            # Separate teams
+            our_team_participants = []
+            enemy_team_participants = []
+
+            # Role mapping for display (normalize roles)
+            ROLE_DISPLAY = {
+                'TOP': 'Top',
+                'JUNGLE': 'Jungle',
+                'MIDDLE': 'Mid',
+                'BOTTOM': 'Bot',
+                'UTILITY': 'Support',
+                'top': 'Top',
+                'jungle': 'Jungle',
+                'mid': 'Mid',
+                'middle': 'Mid',
+                'bot': 'Bot',
+                'bottom': 'Bot',
+                'support': 'Support',
+                'utility': 'Support'
+            }
+
             for p in participants:
                 is_team_member = p.player_id in team_player_ids
+                is_our_team = p.riot_team_id == our_riot_team_id
 
                 # Get champion info from database
                 champ_info = champion_data_map.get(p.champion_id, {
@@ -860,14 +1018,18 @@ def get_team_matches(team_id):
                     'icon_url': None
                 })
 
-                participant_data.append({
+                # Display role (prefer team_position over individual_position)
+                display_role = p.team_position or p.individual_position or p.role or 'UNKNOWN'
+                display_role = ROLE_DISPLAY.get(display_role, display_role)
+
+                participant_info = {
                     "player_id": str(p.player_id) if p.player_id else None,
-                    "summoner_name": p.player.summoner_name if p.player else "Unknown",
+                    "summoner_name": p.summoner_name or (p.player.summoner_name if p.player else "Unknown"),
                     "is_team_member": is_team_member,
                     "champion_id": p.champion_id,
                     "champion_name": champ_info.get('name', p.champion_name),
                     "champion_icon": champ_info.get('icon_url'),
-                    "role": p.team_position or p.role,
+                    "role": display_role,
                     "kills": p.kills or 0,
                     "deaths": p.deaths or 0,
                     "assists": p.assists or 0,
@@ -876,8 +1038,14 @@ def get_team_matches(team_id):
                     "damage_dealt": p.total_damage_dealt_to_champions or 0,
                     "damage_taken": p.total_damage_taken or 0,
                     "vision_score": p.vision_score or 0,
+                    "control_wards": p.control_wards_placed or 0,
                     "win": p.win
-                })
+                }
+
+                if is_our_team:
+                    our_team_participants.append(participant_info)
+                else:
+                    enemy_team_participants.append(participant_info)
 
             result_matches.append({
                 "match_id": match.match_id,
@@ -885,7 +1053,8 @@ def get_team_matches(team_id):
                 "game_duration": match.game_duration or 0,
                 "win": team_won,
                 "team_players_count": team_players_count,
-                "participants": participant_data
+                "our_team": our_team_participants,
+                "enemy_team": enemy_team_participants
             })
 
         return jsonify({
@@ -896,3 +1065,38 @@ def get_team_matches(team_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching team matches: {str(e)}")
         return jsonify({"error": "Failed to fetch team matches", "details": str(e)}), 500
+
+
+@bp.route("/dashboard/stats", methods=["GET"])
+def get_dashboard_stats():
+    """
+    Get overall dashboard statistics
+
+    Returns:
+        {
+            "total_teams": 5,
+            "total_players": 35,
+            "total_matches": 150,
+            "tournament_matches": 150
+        }
+    """
+    try:
+        total_teams = Team.query.count()
+        total_players = Player.query.count()
+
+        # Count all matches (tournament + non-tournament if any)
+        total_matches = Match.query.count()
+
+        # Count only tournament matches
+        tournament_matches = Match.query.filter_by(is_tournament_game=True).count()
+
+        return jsonify({
+            "total_teams": total_teams,
+            "total_players": total_players,
+            "total_matches": total_matches,
+            "tournament_matches": tournament_matches
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching dashboard stats: {str(e)}")
+        return jsonify({"error": "Failed to fetch dashboard stats"}), 500

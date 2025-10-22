@@ -219,6 +219,69 @@ def get_team(team_id):
     return jsonify(team.to_dict()), 200
 
 
+@bp.route("/<team_id>", methods=["DELETE"])
+def delete_team(team_id):
+    """
+    Delete a team from the database
+
+    Query parameters:
+        - delete_players: 'true' to also delete all players from database (default: false)
+                         If false, only removes team and roster entries, players remain
+
+    Returns:
+        {
+            "message": "Team deleted successfully",
+            "players_deleted": 0 or N
+        }
+    """
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+
+    delete_players_flag = request.args.get("delete_players", "false").lower() == "true"
+
+    try:
+        team_name = team.name
+        players_deleted = 0
+
+        # Get roster before deletion
+        active_roster = [r for r in team.rosters if r.leave_date is None]
+
+        if delete_players_flag:
+            # Delete all players associated with this team
+            for roster_entry in active_roster:
+                player = roster_entry.player
+                if player:
+                    db.session.delete(player)
+                    players_deleted += 1
+                    current_app.logger.info(f"Deleted player: {player.summoner_name}")
+
+        # Delete team (cascade will handle roster entries, match associations, etc.)
+        db.session.delete(team)
+        db.session.commit()
+
+        current_app.logger.info(
+            f"Team deleted: {team_name} (ID: {team_id}), "
+            f"Players deleted: {players_deleted}"
+        )
+
+        return (
+            jsonify(
+                {
+                    "message": "Team deleted successfully",
+                    "team_name": team_name,
+                    "players_deleted": players_deleted,
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to delete team: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to delete team: {str(e)}"}), 500
+
+
 @bp.route("/<team_id>/roster", methods=["GET"])
 def get_team_roster(team_id):
     """
@@ -308,7 +371,8 @@ def fetch_team_matches(team_id):
     Request body:
         {
             "count_per_player": 50 (optional, default: 50),
-            "min_players_together": 4 (optional, default: 4)
+            "min_players_together": 4 (optional, default: 4),
+            "fetch_all_player_games": true (optional, default: true)
         }
 
     Returns:
@@ -325,6 +389,7 @@ def fetch_team_matches(team_id):
     data = request.get_json() or {}
     count_per_player = data.get("count_per_player", 50)
     min_players_together = data.get("min_players_together", 4)
+    fetch_all_player_games = data.get("fetch_all_player_games", True)
 
     current_app.logger.info(
         f"Fetching tournament matches for team {team.name} "
@@ -336,7 +401,7 @@ def fetch_team_matches(team_id):
         riot_client = RiotAPIClient()
         match_fetcher = MatchFetcher(riot_client)
 
-        # Fetch tournament games with 4+ players filter
+        # Fetch tournament games with 4+ players filter (team games)
         matches_fetched = match_fetcher.fetch_tournament_games_only(
             team, count_per_player, min_players_together
         )
@@ -344,6 +409,45 @@ def fetch_team_matches(team_id):
         current_app.logger.info(
             f"Fetched {matches_fetched} tournament matches for {team.name}"
         )
+
+        # Additionally fetch ALL tournament games for each player individually
+        # This ensures player profiles show their complete tournament history
+        if fetch_all_player_games:
+            from app.services.player_match_service import PlayerMatchService
+            player_service = PlayerMatchService(riot_client)
+
+            active_roster = [r for r in team.rosters if r.leave_date is None]
+
+            current_app.logger.info(
+                f"Fetching all individual tournament games for {len(active_roster)} players..."
+            )
+
+            for roster_entry in active_roster:
+                player = roster_entry.player
+                try:
+                    stats = player_service.fetch_all_player_tournament_games(
+                        player=player,
+                        max_games=100,
+                        force_refresh=False
+                    )
+                    current_app.logger.info(
+                        f"Player {player.summoner_name}: {stats['new_games']} new games, "
+                        f"{stats['existing_games']} already stored"
+                    )
+
+                    # Recalculate player champion stats if new games were fetched
+                    if stats['new_games'] > 0:
+                        from app.services.stats_calculator import StatsCalculator
+                        stats_calculator = StatsCalculator()
+                        stats_calculator.calculate_player_champion_stats(player)
+                        current_app.logger.info(
+                            f"Recalculated champion stats for {player.summoner_name}"
+                        )
+
+                except Exception as e:
+                    current_app.logger.error(
+                        f"Failed to fetch individual games for {player.summoner_name}: {str(e)}"
+                    )
 
         return (
             jsonify(

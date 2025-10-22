@@ -4,7 +4,16 @@
       "Bash(curl -s http://localhost:5000/api/teams/5d7b745e-5e2f-469c-bda3-32d2312ab6b4/overview)",
       "Bash(docker exec pl_scout_postgres psql -U pl_scout_user -d pl_scout -c \"\nSELECT mp.champion_id, COUNT(*) as picks, SUM(CAST(mp.win AS INTEGER)) as wins, p.summoner_name\nFROM match_participants mp\nJOIN matches m ON mp.match_id = m.id\nJOIN players p ON mp.player_id = p.id\nWHERE mp.team_id = ''5d7b745e-5e2f-469c-bda3-32d2312ab6b4''\n  AND m.is_tournament_game = true\nGROUP BY mp.champion_id, p.summoner_name\nORDER BY picks DESC\nLIMIT 10;\n\")",
       "Bash(docker exec pl_scout_postgres psql -U pl_scout_user -d pl_scout -c \"\nSELECT COUNT(*) as total_participants,\n       COUNT(*) FILTER (WHERE team_id IS NOT NULL) as with_team_id,\n       COUNT(*) FILTER (WHERE team_id IS NULL) as without_team_id\nFROM match_participants mp\nJOIN matches m ON mp.match_id = m.id\nWHERE m.winning_team_id = ''5d7b745e-5e2f-469c-bda3-32d2312ab6b4''\n   OR m.losing_team_id = ''5d7b745e-5e2f-469c-bda3-32d2312ab6b4'';\n\")",
-      "Bash(docker exec pl_scout_backend python fix_participant_team_ids.py)"
+      "Bash(docker exec pl_scout_backend python fix_participant_team_ids.py)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(npm run build:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose down:*)"
     ],
     "deny": [],
     "ask": []

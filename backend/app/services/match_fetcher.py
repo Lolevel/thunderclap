@@ -26,14 +26,14 @@ class MatchFetcher:
         self.riot_client = riot_client or RiotAPIClient()
 
     def fetch_player_matches(self, player: Player, count: int = 100,
-                            queue: Optional[int] = None) -> int:
+                            match_type: Optional[str] = None) -> int:
         """
         Fetch match history for a player and store in database
 
         Args:
             player: Player model instance
             count: Number of matches to fetch (max 100)
-            queue: Queue ID filter (None for all, 0 for custom, 420 for ranked)
+            match_type: Match type filter ('tourney' for tournament games, None for all)
 
         Returns:
             Number of new matches stored
@@ -44,7 +44,7 @@ class MatchFetcher:
         match_ids = self.riot_client.get_match_history(
             player.puuid,
             count=count,
-            queue=queue
+            match_type=match_type
         )
 
         if not match_ids:
@@ -399,27 +399,70 @@ class MatchFetcher:
         participant = MatchParticipant(
             match_id=match.id,
             player_id=player.id if player else None,
+
+            # CRITICAL: Store PUUID for player linking
+            puuid=puuid,
+            summoner_name=participant_data.get('summonerName'),
+            riot_game_name=participant_data.get('riotIdGameName'),
+            riot_tagline=participant_data.get('riotIdTagline'),
+
+            # Champion & Position
             champion_id=participant_data.get('championId'),
             champion_name=participant_data.get('championName'),
             role=participant_data.get('role'),
             lane=participant_data.get('lane'),
             team_position=participant_data.get('teamPosition'),
+            individual_position=participant_data.get('individualPosition'),
+            participant_id=participant_data.get('participantId'),
+
+            # Team assignment
+            riot_team_id=participant_data.get('teamId'),  # 100=Blue, 200=Red
+
+            # Core stats
             kills=participant_data.get('kills'),
             deaths=participant_data.get('deaths'),
             assists=participant_data.get('assists'),
+
+            # CS & Gold
+            total_minions_killed=participant_data.get('totalMinionsKilled'),
+            neutral_minions_killed=participant_data.get('neutralMinionsKilled'),
             cs_total=cs_total,
             cs_per_min=round(cs_per_min, 2),
             gold_earned=participant_data.get('goldEarned'),
-            damage_dealt=participant_data.get('totalDamageDealtToChampions'),
-            damage_taken=participant_data.get('totalDamageTaken'),
+            gold_spent=participant_data.get('goldSpent'),
+
+            # Damage
+            total_damage_dealt_to_champions=participant_data.get('totalDamageDealtToChampions'),
+            physical_damage_dealt_to_champions=participant_data.get('physicalDamageDealtToChampions'),
+            magic_damage_dealt_to_champions=participant_data.get('magicDamageDealtToChampions'),
+            true_damage_dealt_to_champions=participant_data.get('trueDamageDealtToChampions'),
+            total_damage_taken=participant_data.get('totalDamageTaken'),
+            damage_self_mitigated=participant_data.get('damageSelfMitigated'),
+
+            # Vision
             vision_score=participant_data.get('visionScore'),
             wards_placed=participant_data.get('wardsPlaced'),
-            control_wards_placed=control_wards,  # NEW: Pink wards
-            wards_destroyed=participant_data.get('wardsKilled'),
+            control_wards_placed=control_wards,  # Pink wards
+            wards_killed=participant_data.get('wardsKilled'),
+
+            # Combat achievements
             first_blood=participant_data.get('firstBloodKill', False),
+            first_blood_assist=participant_data.get('firstBloodAssist', False),
             first_tower=participant_data.get('firstTowerKill', False),
-            win=participant_data.get('win', False),
-            riot_team_id=participant_data.get('teamId')  # 100=Blue, 200=Red
+            first_tower_assist=participant_data.get('firstTowerAssist', False),
+            double_kills=participant_data.get('doubleKills', 0),
+            triple_kills=participant_data.get('tripleKills', 0),
+            quadra_kills=participant_data.get('quadraKills', 0),
+            penta_kills=participant_data.get('pentaKills', 0),
+
+            # Objectives
+            baron_kills=participant_data.get('baronKills', 0),
+            dragon_kills=participant_data.get('dragonKills', 0),
+            turret_kills=participant_data.get('turretKills', 0),
+            inhibitor_kills=participant_data.get('inhibitorKills', 0),
+
+            # Result
+            win=participant_data.get('win', False)
         )
 
         db.session.add(participant)

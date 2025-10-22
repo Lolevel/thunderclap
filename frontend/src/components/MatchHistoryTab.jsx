@@ -94,8 +94,9 @@ const MatchHistoryTab = ({ teamId }) => {
 
       {matches.map((match) => {
         const isExpanded = expandedMatches.has(match.match_id);
-        const blueTeam = match.participants.slice(0, 5);
-        const redTeam = match.participants.slice(5, 10);
+        // Backend returns our_team and enemy_team instead of participants
+        const ourTeam = match.our_team || [];
+        const enemyTeam = match.enemy_team || [];
 
         return (
           <div
@@ -140,7 +141,7 @@ const MatchHistoryTab = ({ teamId }) => {
 
                   {/* Team Champions Preview (first 5 only) */}
                   <div className="flex -space-x-2">
-                    {blueTeam
+                    {ourTeam
                       .filter((p) => p.is_team_member)
                       .map((p) => (
                         <div
@@ -175,13 +176,13 @@ const MatchHistoryTab = ({ teamId }) => {
             {/* Match Details (expandable) */}
             {isExpanded && (
               <div className="mt-6 pt-6 border-t border-border space-y-6">
-                {/* Blue Team */}
+                {/* Our Team */}
                 <div>
-                  <h3 className="text-sm font-semibold text-blue-400 mb-3">
-                    BLUE TEAM
+                  <h3 className="text-sm font-semibold text-primary mb-3">
+                    UNSER TEAM
                   </h3>
                   <div className="space-y-2">
-                    {blueTeam.map((p) => (
+                    {ourTeam.map((p) => (
                       <div
                         key={p.summoner_name}
                         className={`flex items-center gap-4 p-3 rounded-lg ${
@@ -272,13 +273,13 @@ const MatchHistoryTab = ({ teamId }) => {
                   </div>
                 </div>
 
-                {/* Red Team */}
+                {/* Enemy Team */}
                 <div>
-                  <h3 className="text-sm font-semibold text-red-400 mb-3">
-                    RED TEAM
+                  <h3 className="text-sm font-semibold text-error mb-3">
+                    GEGNER
                   </h3>
                   <div className="space-y-2">
-                    {redTeam.map((p) => (
+                    {enemyTeam.map((p) => (
                       <div
                         key={p.summoner_name}
                         className={`flex items-center gap-4 p-3 rounded-lg ${

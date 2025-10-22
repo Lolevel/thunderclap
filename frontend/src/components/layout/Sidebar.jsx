@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, TrendingUp, FileText } from 'lucide-react';
+import { Home, Users, TrendingUp } from 'lucide-react';
 
 const Sidebar = () => {
   const location = useLocation();
@@ -8,7 +8,6 @@ const Sidebar = () => {
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/teams', icon: Users, label: 'Teams' },
     { path: '/players', icon: TrendingUp, label: 'Spieler' },
-    { path: '/reports', icon: FileText, label: 'Reports' },
   ];
 
   const isActive = (path) => {
@@ -19,7 +18,7 @@ const Sidebar = () => {
   };
 
   return (
-    <aside className="w-64 bg-surface border-r border-border min-h-[calc(100vh-4rem)] p-4">
+    <aside className="fixed left-0 top-16 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950/95 backdrop-blur-sm border-r border-slate-800/50 p-4 overflow-hidden">
       <nav className="space-y-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -32,8 +31,8 @@ const Sidebar = () => {
               className={`
                 flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
                 ${active
-                  ? 'bg-primary text-white shadow-glow-sm'
-                  : 'text-text-secondary hover:bg-surface-elevated hover:text-text-primary'
+                  ? 'bg-gradient-to-r from-primary to-accent text-white shadow-glow-sm'
+                  : 'text-text-secondary hover:bg-slate-800/50 hover:text-text-primary'
                 }
               `}
             >

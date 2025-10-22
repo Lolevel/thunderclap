@@ -149,11 +149,17 @@ class PlayerChampion(db.Model):
 
     def to_dict(self):
         """Convert model to dictionary"""
+        from app.utils.champion_helper import enrich_champion_data
+
+        # Get proper champion name from DB
+        champ_data = enrich_champion_data(self.champion_id, include_images=False)
+        proper_name = champ_data.get('name', self.champion_name)
+
         return {
             'id': str(self.id),
             'player_id': str(self.player_id),
             'champion_id': self.champion_id,
-            'champion_name': self.champion_name,
+            'champion_name': proper_name,
             'game_type': self.game_type,
             'mastery_level': self.mastery_level,
             'mastery_points': self.mastery_points,

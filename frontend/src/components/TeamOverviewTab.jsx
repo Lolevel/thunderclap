@@ -203,45 +203,81 @@ const TeamOverviewTab = ({ teamId }) => {
 					Top 5 Team Champions
 				</h2>
 				{top_5_champions && top_5_champions.length > 0 ? (
-					<div className="space-y-3">
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 						{top_5_champions.map((champ, index) => (
 							<div
 								key={index}
-								className="flex items-center justify-between p-3 bg-surface-hover rounded-lg hover:bg-surface-hover/80 transition-colors">
-								<div className="flex items-center gap-3">
-									<div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center">
-										<span className="text-primary font-bold text-sm">
-											{index + 1}
-										</span>
-									</div>
-									<div>
-										<div className="font-semibold text-text-primary">
+								className="relative overflow-hidden rounded-xl bg-gradient-to-br from-surface-hover to-surface border border-border hover:border-primary/50 transition-all duration-300 group">
+								{/* Rank Badge */}
+								<div className="absolute top-3 left-3 z-10 w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg">
+									<span className="text-white font-bold text-lg">
+										#{index + 1}
+									</span>
+								</div>
+
+								{/* Champion Image Background */}
+								<div className="relative h-40 overflow-hidden">
+									{champ.champion_id ? (
+										<>
+											<img
+												src={`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/uncentered/${champ.champion_id}/${champ.champion_id}000.jpg`}
+												alt={champ.champion}
+												className="w-full h-full object-cover object-top opacity-60 group-hover:opacity-80 group-hover:scale-110 transition-all duration-700 ease-out"
+												onError={(e) => {
+													// Try centered version as fallback
+													if (!e.target.dataset.fallbackTried) {
+														e.target.dataset.fallbackTried = 'true';
+														e.target.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/${champ.champion_id}/${champ.champion_id}000.jpg`;
+													} else {
+														// Final fallback to icon
+														e.target.src = champ.champion_icon || '';
+														e.target.className = 'w-full h-full object-cover opacity-40';
+													}
+												}}
+											/>
+											<div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/70 to-transparent"></div>
+										</>
+									) : (
+										<div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20"></div>
+									)}
+
+									{/* Champion Name Overlay */}
+									<div className="absolute bottom-3 left-3 right-3">
+										<h3 className="text-xl font-bold text-text-primary drop-shadow-lg">
 											{champ.champion}
-										</div>
-										<div className="text-sm text-text-muted">
-											gespielt von {champ.player}
-										</div>
+										</h3>
 									</div>
 								</div>
-								<div className="flex items-center gap-6">
-									<div className="text-right">
-										<div className="text-sm text-text-muted">Picks</div>
-										<div className="font-semibold text-text-primary">
-											{champ.picks}
-										</div>
+
+								{/* Stats Section */}
+								<div className="p-4 space-y-3">
+									{/* Player */}
+									<div className="flex items-center gap-2 text-sm">
+										<Users className="w-4 h-4 text-primary" />
+										<span className="text-text-muted truncate">{champ.player}</span>
 									</div>
-									<div className="text-right">
-										<div className="text-sm text-text-muted">Winrate</div>
-										<div className={`font-semibold ${
-											champ.winrate >= 50 ? 'text-success' : 'text-error'
-										}`}>
-											{champ.winrate.toFixed(1)}%
+
+									{/* Stats Grid */}
+									<div className="grid grid-cols-3 gap-3">
+										<div className="text-center p-2 bg-surface rounded-lg">
+											<div className="text-xs text-text-muted mb-1">Picks</div>
+											<div className="text-lg font-bold text-primary">
+												{champ.picks}
+											</div>
 										</div>
-									</div>
-									<div className="text-right">
-										<div className="text-sm text-text-muted">W-L</div>
-										<div className="font-semibold text-text-secondary">
-											{champ.wins}-{champ.picks - champ.wins}
+										<div className="text-center p-2 bg-surface rounded-lg">
+											<div className="text-xs text-text-muted mb-1">Winrate</div>
+											<div className={`text-lg font-bold ${
+												champ.winrate >= 50 ? 'text-success' : 'text-error'
+											}`}>
+												{champ.winrate.toFixed(0)}%
+											</div>
+										</div>
+										<div className="text-center p-2 bg-surface rounded-lg">
+											<div className="text-xs text-text-muted mb-1">W-L</div>
+											<div className="text-sm font-bold text-text-primary">
+												{champ.wins}-{champ.picks - champ.wins}
+											</div>
 										</div>
 									</div>
 								</div>

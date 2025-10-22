@@ -24,22 +24,21 @@ const Dashboard = () => {
     try {
       const API_BASE_URL =
         import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-      const [teamsRes, playersRes] = await Promise.all([
+      const [teamsRes, dashboardStatsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/teams`),
-        fetch(`${API_BASE_URL}/players`),
+        fetch(`${API_BASE_URL}/dashboard/stats`),
       ]);
 
       const teamsData = await teamsRes.json();
-      const playersData = await playersRes.json();
+      const dashboardStats = await dashboardStatsRes.json();
 
       const teamsArray = teamsData.teams || [];
-      const playersArray = playersData.players || [];
 
       setTeams(teamsArray.slice(0, 6));
       setStats({
-        totalTeams: teamsData.total || teamsArray.length,
-        totalPlayers: playersData.total || playersArray.length,
-        recentMatches: 0,
+        totalTeams: dashboardStats.total_teams || 0,
+        totalPlayers: dashboardStats.total_players || 0,
+        recentMatches: dashboardStats.tournament_matches || 0,
       });
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
@@ -83,7 +82,7 @@ const Dashboard = () => {
               color: "from-cyan-500 to-cyan-600",
             },
             {
-              label: "Matches",
+              label: "Games in DB 🎮",
               value: stats.recentMatches,
               icon: Calendar,
               color: "from-purple-500 to-purple-600",

@@ -74,7 +74,7 @@ services:
     depends_on:
       - backend
     environment:
-    - VITE_API_URL=http://lolevel.de:5000/api
+    - VITE_API_URL=http://localhost:5000/api
     command: npm run dev -- --host
 
 volumes:

@@ -10,7 +10,7 @@ from datetime import datetime
 from app import db
 from app.models.player import Player
 from app.models.match import Match
-from backend.utils.match_data_extractor import store_complete_match_data
+from utils.match_data_extractor import store_complete_match_data
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,10 @@ class PlayerMatchService:
 
         try:
             # Get match history from Riot API
-            # queue=0 filters for custom games (tournament games)
+            # type=tourney filters for tournament games
             match_ids = self.riot_api.get_match_history(
                 puuid=player.puuid,
-                queue=0,  # Custom games only (tournaments)
+                match_type='tourney',  # Tournament games only
                 count=max_games
             )
 
@@ -102,12 +102,6 @@ class PlayerMatchService:
 
                     if not match_data:
                         stats['errors'].append(f"Failed to fetch match {match_id}")
-                        continue
-
-                    # Filter: Only tournament games (duration > 15min, level 30+)
-                    info = match_data.get('info', {})
-                    if info.get('gameDuration', 0) < 900:  # Less than 15 minutes
-                        logger.debug(f"Skipping {match_id}: too short (remake)")
                         continue
 
                     # Store complete match data

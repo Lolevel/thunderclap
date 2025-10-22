@@ -59,6 +59,21 @@ const ScoutingReportTab = ({ teamId }) => {
 		total_games
 	} = report;
 
+	// Show message if no games available
+	if (!total_games || total_games === 0) {
+		return (
+			<div className="card text-center py-12">
+				<FileText className="w-16 h-16 text-text-muted mx-auto mb-4" />
+				<h3 className="text-xl font-bold text-text-primary mb-2">
+					Keine Spiele gefunden
+				</h3>
+				<p className="text-text-secondary">
+					Bitte lade zuerst Spieldaten für dieses Team, um einen Scouting Report zu erstellen.
+				</p>
+			</div>
+		);
+	}
+
 	return (
 		<div className="space-y-6">
 			{/* Header */}
@@ -88,9 +103,9 @@ const ScoutingReportTab = ({ teamId }) => {
 							<div className="flex items-center justify-between mb-4">
 								<h4 className="font-bold text-text-primary text-lg">Blue Side</h4>
 								<span className={`text-2xl font-bold ${
-									side_performance.blue.winrate >= 50 ? 'text-success' : 'text-error'
+									(side_performance.blue.winrate || 0) >= 50 ? 'text-success' : 'text-error'
 								}`}>
-									{side_performance.blue.winrate.toFixed(1)}%
+									{(side_performance.blue.winrate || 0).toFixed(1)}%
 								</span>
 							</div>
 							<div className="space-y-2 text-sm">
@@ -119,9 +134,9 @@ const ScoutingReportTab = ({ teamId }) => {
 							<div className="flex items-center justify-between mb-4">
 								<h4 className="font-bold text-text-primary text-lg">Red Side</h4>
 								<span className={`text-2xl font-bold ${
-									side_performance.red.winrate >= 50 ? 'text-success' : 'text-error'
+									(side_performance.red.winrate || 0) >= 50 ? 'text-success' : 'text-error'
 								}`}>
-									{side_performance.red.winrate.toFixed(1)}%
+									{(side_performance.red.winrate || 0).toFixed(1)}%
 								</span>
 							</div>
 							<div className="space-y-2 text-sm">
