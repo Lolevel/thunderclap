@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Trophy, TrendingUp, Users, Target } from 'lucide-react';
 import api from '../config/api';
+import { getChampionSplashUrl, handleSplashError } from '../utils/championHelper';
 
 const TeamOverviewTab = ({ teamId }) => {
 	const [overview, setOverview] = useState(null);
@@ -52,24 +53,34 @@ const TeamOverviewTab = ({ teamId }) => {
 					<Trophy className="w-5 h-5 text-primary" />
 					Prime League Statistiken
 				</h2>
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div className="bg-surface-hover p-4 rounded-lg">
-						<div className="text-text-muted text-sm mb-1">Spiele</div>
-						<div className="text-2xl font-bold text-text-primary">
+				<div className="flex items-center gap-6">
+					<div className="flex items-baseline gap-2">
+						<div className="text-4xl font-bold text-text-primary">
 							{pl_stats.games}
 						</div>
-						<div className="text-sm text-text-secondary mt-1">
-							{pl_stats.wins}W - {pl_stats.losses}L
-						</div>
+						<div className="text-text-muted text-sm">Spiele</div>
 					</div>
-
-					<div className="bg-surface-hover p-4 rounded-lg">
-						<div className="text-text-muted text-sm mb-1">Winrate</div>
-						<div className={`text-2xl font-bold ${
+					<div className="h-8 w-px bg-border"></div>
+					<div className="flex items-baseline gap-2">
+						<div className="text-2xl font-semibold text-success">
+							{pl_stats.wins}
+						</div>
+						<div className="text-text-muted text-sm">Siege</div>
+					</div>
+					<div className="flex items-baseline gap-2">
+						<div className="text-2xl font-semibold text-error">
+							{pl_stats.losses}
+						</div>
+						<div className="text-text-muted text-sm">Niederlagen</div>
+					</div>
+					<div className="h-8 w-px bg-border"></div>
+					<div className="flex items-baseline gap-2">
+						<div className={`text-3xl font-bold ${
 							pl_stats.winrate >= 50 ? 'text-success' : 'text-error'
 						}`}>
-							{pl_stats.winrate.toFixed(1)}%
+							{pl_stats.winrate.toFixed(0)}%
 						</div>
+						<div className="text-text-muted text-sm">Winrate</div>
 					</div>
 				</div>
 			</div>
@@ -142,7 +153,7 @@ const TeamOverviewTab = ({ teamId }) => {
 
 						{/* Lowest Rank */}
 						{lowest_rank_info && (
-							<div className="bg-gradient-to-br from-surface-hover to-surface p-5 rounded-lg border border-border">
+							<div className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 p-5 rounded-lg border border-amber-500/20">
 								<div className="text-text-muted text-sm mb-2">
 									Niedrigster Rang
 								</div>
@@ -158,7 +169,7 @@ const TeamOverviewTab = ({ teamId }) => {
 										/>
 									)}
 									<div>
-										<div className="text-xl font-bold text-text-primary">
+										<div className="text-xl font-bold text-amber-400">
 											{lowest_rank_info.display}
 										</div>
 										<div className="text-xs text-text-muted">
@@ -169,150 +180,110 @@ const TeamOverviewTab = ({ teamId }) => {
 							</div>
 						)}
 					</div>
-					<div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-lg">
-						<p className="text-sm text-text-secondary">
-							<strong>Info:</strong> Rang-Statistiken basieren auf Solo/Duo Queue Rängen.
-							Team-Durchschnitt: {player_count} Spieler analysiert.
-							Klicke auf "Daten aktualisieren" um die neuesten Ränge zu laden.
-						</p>
-					</div>
 				</div>
 			)}
 
-			{/* Unranked Message */}
-			{!average_rank_info && (
-				<div className="card bg-surface-hover border border-border">
-					<div className="flex items-center gap-3">
-						<Users className="w-10 h-10 text-text-muted" />
-						<div>
-							<h3 className="font-semibold text-text-primary mb-1">
-								Keine Rang-Daten verfügbar
-							</h3>
-							<p className="text-sm text-text-secondary">
-								Klicke auf "Daten aktualisieren" um die Ränge der Spieler zu laden.
-							</p>
-						</div>
-					</div>
-				</div>
-			)}
-
-			{/* Top 5 Team Champions */}
+			{/* Top 5 Team Champions - Podium */}
 			<div className="card">
-				<h2 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
+				<h2 className="text-xl font-bold text-text-primary mb-6 flex items-center gap-2">
 					<Target className="w-5 h-5 text-accent" />
 					Top 5 Team Champions
 				</h2>
 				{top_5_champions && top_5_champions.length > 0 ? (
-					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-						{top_5_champions.map((champ, index) => (
-							<div
-								key={index}
-								className="relative overflow-hidden rounded-xl bg-gradient-to-br from-surface-hover to-surface border border-border hover:border-primary/50 transition-all duration-300 group">
-								{/* Rank Badge */}
-								<div className="absolute top-3 left-3 z-10 w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center shadow-lg">
-									<span className="text-white font-bold text-lg">
-										#{index + 1}
-									</span>
-								</div>
-
-								{/* Champion Image Background */}
-								<div className="relative h-40 overflow-hidden">
-									{champ.champion_id ? (
-										<>
-											<img
-												src={`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/uncentered/${champ.champion_id}/${champ.champion_id}000.jpg`}
-												alt={champ.champion}
-												className="w-full h-full object-cover object-top opacity-60 group-hover:opacity-80 group-hover:scale-110 transition-all duration-700 ease-out"
-												onError={(e) => {
-													// Try centered version as fallback
-													if (!e.target.dataset.fallbackTried) {
-														e.target.dataset.fallbackTried = 'true';
-														e.target.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/${champ.champion_id}/${champ.champion_id}000.jpg`;
-													} else {
-														// Final fallback to icon
-														e.target.src = champ.champion_icon || '';
-														e.target.className = 'w-full h-full object-cover opacity-40';
-													}
-												}}
-											/>
-											<div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/70 to-transparent"></div>
-										</>
-									) : (
-										<div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20"></div>
-									)}
-
-									{/* Champion Name Overlay */}
-									<div className="absolute bottom-3 left-3 right-3">
-										<h3 className="text-xl font-bold text-text-primary drop-shadow-lg">
-											{champ.champion}
-										</h3>
-									</div>
-								</div>
-
-								{/* Stats Section */}
-								<div className="p-4 space-y-3">
-									{/* Player */}
-									<div className="flex items-center gap-2 text-sm">
-										<Users className="w-4 h-4 text-primary" />
-										<span className="text-text-muted truncate">{champ.player}</span>
-									</div>
-
-									{/* Stats Grid */}
-									<div className="grid grid-cols-3 gap-3">
-										<div className="text-center p-2 bg-surface rounded-lg">
-											<div className="text-xs text-text-muted mb-1">Picks</div>
-											<div className="text-lg font-bold text-primary">
-												{champ.picks}
-											</div>
+					<div className="space-y-4">
+						<div className="flex items-end justify-center gap-3">
+							{top_5_champions[1] && (
+								<div className="flex-1 max-w-[280px]">
+									<div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border border-slate-600/50 transition-all duration-300 group">
+										<div className="absolute top-2 right-2 z-10 w-8 h-8 bg-gradient-to-br from-slate-300 to-slate-400 rounded-full flex items-center justify-center shadow-lg">
+											<span className="text-slate-900 font-bold text-sm">#2</span>
 										</div>
-										<div className="text-center p-2 bg-surface rounded-lg">
-											<div className="text-xs text-text-muted mb-1">Winrate</div>
-											<div className={`text-lg font-bold ${
-												champ.winrate >= 50 ? 'text-success' : 'text-error'
-											}`}>
-												{champ.winrate.toFixed(0)}%
-											</div>
+										<div className="relative h-32 overflow-hidden">
+											<img src={getChampionSplashUrl(top_5_champions[1].champion, 0)} alt={top_5_champions[1].champion} className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-500" onError={(e) => handleSplashError(e, top_5_champions[1].champion)} />
+											<div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/30 to-transparent"></div>
 										</div>
-										<div className="text-center p-2 bg-surface rounded-lg">
-											<div className="text-xs text-text-muted mb-1">W-L</div>
-											<div className="text-sm font-bold text-text-primary">
-												{champ.wins}-{champ.picks - champ.wins}
+										<div className="p-3">
+											<h3 className="font-bold text-text-primary text-sm truncate">{top_5_champions[1].champion}</h3>
+											<p className="text-xs text-text-muted truncate mb-2">{top_5_champions[1].player}</p>
+											<div className="flex items-center justify-between text-xs">
+												<span className="text-text-muted">{top_5_champions[1].picks} Picks</span>
+												<span className={`font-semibold ${top_5_champions[1].winrate >= 50 ? 'text-success' : 'text-error'}`}>{top_5_champions[1].winrate.toFixed(0)}%</span>
 											</div>
 										</div>
 									</div>
 								</div>
+							)}
+							{top_5_champions[0] && (
+								<div className="flex-1 max-w-[300px]">
+									<div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-yellow-500/20 to-amber-600/20 border-2 border-yellow-500/50 transition-all duration-300 group shadow-lg shadow-yellow-500/20">
+										<div className="absolute top-2 right-2 z-10 w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-xl animate-pulse">
+											<span className="text-yellow-950 font-bold text-base">#1</span>
+										</div>
+										<div className="relative h-40 overflow-hidden">
+											<img src={getChampionSplashUrl(top_5_champions[0].champion, 0)} alt={top_5_champions[0].champion} className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-500" onError={(e) => handleSplashError(e, top_5_champions[0].champion)} />
+											<div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/20 to-transparent"></div>
+										</div>
+										<div className="p-4">
+											<h3 className="font-bold text-text-primary text-base truncate">{top_5_champions[0].champion}</h3>
+											<p className="text-xs text-text-muted truncate mb-2">{top_5_champions[0].player}</p>
+											<div className="flex items-center justify-between text-sm">
+												<span className="text-text-muted font-medium">{top_5_champions[0].picks} Picks</span>
+												<span className={`font-bold ${top_5_champions[0].winrate >= 50 ? 'text-success' : 'text-error'}`}>{top_5_champions[0].winrate.toFixed(0)}%</span>
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+							{top_5_champions[2] && (
+								<div className="flex-1 max-w-[280px]">
+									<div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-amber-700/30 to-amber-900/30 border border-amber-700/40 transition-all duration-300 group">
+										<div className="absolute top-2 right-2 z-10 w-8 h-8 bg-gradient-to-br from-amber-600 to-amber-700 rounded-full flex items-center justify-center shadow-lg">
+											<span className="text-amber-950 font-bold text-sm">#3</span>
+										</div>
+										<div className="relative h-32 overflow-hidden">
+											<img src={getChampionSplashUrl(top_5_champions[2].champion, 0)} alt={top_5_champions[2].champion} className="w-full h-full object-cover object-top group-hover:scale-105 transition-all duration-500" onError={(e) => handleSplashError(e, top_5_champions[2].champion)} />
+											<div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/30 to-transparent"></div>
+										</div>
+										<div className="p-3">
+											<h3 className="font-bold text-text-primary text-sm truncate">{top_5_champions[2].champion}</h3>
+											<p className="text-xs text-text-muted truncate mb-2">{top_5_champions[2].player}</p>
+											<div className="flex items-center justify-between text-xs">
+												<span className="text-text-muted">{top_5_champions[2].picks} Picks</span>
+												<span className={`font-semibold ${top_5_champions[2].winrate >= 50 ? 'text-success' : 'text-error'}`}>{top_5_champions[2].winrate.toFixed(0)}%</span>
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+						</div>
+						{(top_5_champions[3] || top_5_champions[4]) && (
+							<div className="flex justify-center gap-3">
+								{[3, 4].map(i => top_5_champions[i] && (
+									<div key={i} className="flex-1 max-w-[280px]">
+										<div className="flex items-center gap-3 p-3 bg-surface/50 border border-border/50 rounded-lg transition-all duration-300">
+											<div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
+												<span className="text-slate-300 font-bold text-xs">#{i+1}</span>
+											</div>
+											<div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+												<img src={getChampionSplashUrl(top_5_champions[i].champion, 0)} alt={top_5_champions[i].champion} className="w-full h-full object-cover" onError={(e) => handleSplashError(e, top_5_champions[i].champion)} />
+											</div>
+											<div className="flex-1 min-w-0">
+												<h4 className="font-semibold text-text-primary text-sm truncate">{top_5_champions[i].champion}</h4>
+												<p className="text-xs text-text-muted truncate">{top_5_champions[i].player}</p>
+											</div>
+											<div className="text-right flex-shrink-0">
+												<div className="text-xs text-text-muted">{top_5_champions[i].picks}x</div>
+												<div className={`text-sm font-semibold ${top_5_champions[i].winrate >= 50 ? 'text-success' : 'text-error'}`}>{top_5_champions[i].winrate.toFixed(0)}%</div>
+											</div>
+										</div>
+									</div>
+								))}
 							</div>
-						))}
+						)}
 					</div>
 				) : (
-					<div className="text-center py-8 text-text-muted">
-						Keine Champion-Daten verfügbar
-					</div>
+					<div className="text-center py-8 text-text-muted">Keine Champion-Daten verfügbar</div>
 				)}
-			</div>
-
-			{/* Summary Card */}
-			<div className="card bg-gradient-to-br from-primary/10 to-secondary/10 border border-primary/20">
-				<div className="flex items-center gap-4">
-					<TrendingUp className="w-12 h-12 text-primary" />
-					<div>
-						<h3 className="text-lg font-bold text-text-primary mb-1">
-							Team Performance
-						</h3>
-						<p className="text-text-secondary">
-							{pl_stats.games > 0 ? (
-								<>
-									Das Team hat <span className="font-semibold text-text-primary">{pl_stats.games}</span> Prime League Spiele
-									mit einer Winrate von <span className={`font-semibold ${pl_stats.winrate >= 50 ? 'text-success' : 'text-error'}`}>
-										{pl_stats.winrate.toFixed(1)}%
-									</span> gespielt.
-								</>
-							) : (
-								'Noch keine Prime League Spiele verfügbar.'
-							)}
-						</p>
-					</div>
-				</div>
 			</div>
 		</div>
 	);

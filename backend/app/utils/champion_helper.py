@@ -43,11 +43,10 @@ def enrich_champion_data(champion_id: int, include_images: bool = True) -> Dict:
         }
 
         if include_images:
-            # Use versioned URLs with current patch
-            patch = get_current_patch()
-            result['icon_url'] = get_champion_icon_url(champion_id, patch)
-            result['splash_url'] = get_champion_splash_url(champion_id, patch)
-            result['loading_url'] = get_champion_loading_url(champion_id, patch)
+            # Use latest version for all assets
+            result['icon_url'] = get_champion_icon_url(champion_id, "latest")
+            result['splash_url'] = get_champion_splash_url(champion_id, "latest")
+            result['loading_url'] = get_champion_loading_url(champion_id, "latest")
 
     return result
 
@@ -58,13 +57,13 @@ def get_champion_icon_url(champion_id: int, patch: Optional[str] = None) -> str:
 
     Args:
         champion_id: Champion ID
-        patch: Patch version (e.g., "14.24") or None for current
+        patch: Patch version (e.g., "14.24") or None for latest
 
     Returns:
         CDN URL for champion icon
     """
     if not patch:
-        patch = get_current_patch()
+        patch = "latest"  # Always use latest to avoid outdated assets
 
     return f"https://raw.communitydragon.org/{patch}/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/{champion_id}.png"
 
@@ -75,14 +74,14 @@ def get_champion_splash_url(champion_id: int, patch: Optional[str] = None, skin_
 
     Args:
         champion_id: Champion ID
-        patch: Patch version or None for current
+        patch: Patch version or None for latest
         skin_id: Skin ID (0 = default)
 
     Returns:
         CDN URL for splash art
     """
     if not patch:
-        patch = get_current_patch()
+        patch = "latest"  # Always use latest to avoid outdated assets
 
     return f"https://raw.communitydragon.org/{patch}/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/{champion_id}/{champion_id}{skin_id:03d}.jpg"
 
@@ -93,14 +92,14 @@ def get_champion_loading_url(champion_id: int, patch: Optional[str] = None, skin
 
     Args:
         champion_id: Champion ID
-        patch: Patch version or None for current
+        patch: Patch version or None for latest
         skin_id: Skin ID (0 = default)
 
     Returns:
         CDN URL for loading screen
     """
     if not patch:
-        patch = get_current_patch()
+        patch = "latest"  # Always use latest to avoid outdated assets
 
     return f"https://raw.communitydragon.org/{patch}/plugins/rcp-be-lol-game-data/global/default/v1/champion-splashes/{champion_id}/{champion_id}{skin_id:03d}.jpg"
 
@@ -121,7 +120,7 @@ def batch_enrich_champions(champion_ids: list, include_images: bool = True) -> D
     champion_map = {c.id: c for c in champions}
 
     result = {}
-    patch = get_current_patch() if include_images else None
+    patch = "latest" if include_images else None
 
     for champ_id in champion_ids:
         champion = champion_map.get(champ_id)

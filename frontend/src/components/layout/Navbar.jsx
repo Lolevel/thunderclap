@@ -74,9 +74,16 @@ const Navbar = () => {
     navigate(`/${type}/${id}`);
   };
 
-  const handleImportSuccess = () => {
-    // Refresh the page or update the teams list
-    window.location.reload();
+  const handleImportSuccess = (data) => {
+    // Navigate to team detail page if team was imported
+    if (data.team_id) {
+      navigate(`/teams/${data.team_id}`);
+    } else if (data.player_id) {
+      navigate(`/players/${data.player_id}`);
+    } else {
+      // Fallback: refresh if no ID provided
+      window.location.reload();
+    }
   };
 
   return (

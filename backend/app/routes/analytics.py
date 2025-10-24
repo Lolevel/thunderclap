@@ -1100,3 +1100,57 @@ def get_dashboard_stats():
     except Exception as e:
         current_app.logger.error(f"Error fetching dashboard stats: {str(e)}")
         return jsonify({"error": "Failed to fetch dashboard stats"}), 500
+
+
+@bp.route("/players/<player_id>/matches", methods=["GET"])
+def get_player_matches(player_id):
+    """Get match history for a specific player"""
+    from app.models.player import Player
+    from app.models.match_participant import MatchParticipant
+    from app.models.match import Match
+    
+    player = Player.query.get(player_id)
+    if not player:
+        return jsonify({"error": "Player not found"}), 404
+    
+    limit = request.args.get('limit', 50, type=int)
+    
+    # Get matches where player participated
+    participants = MatchParticipant.query.filter_by(player_id=player_id).join(Match).order_by(Match.game_creation.desc()).limit(limit).all()
+    
+    matches = []
+    for p in participants:
+        match = p.match
+        if not match:
+            continue
+            
+        # Get all participants for this match
+        all_participants = MatchParticipant.query.filter_by(match_id=match.id).all()
+        
+        # Split into teams
+        our_team = [pt for pt in all_participants if pt.team_id == 100]
+        enemy_team = [pt for pt in all_participants if pt.team_id == 200]
+        
+        # Find which team our player was on
+        player_team = 100 if p.team_id == 100 else 200
+        win = (player_team == 100 and match.winning_team_id == 100) or (player_team == 200 and match.winning_team_id == 200)
+        
+        matches.append({
+            "match_id": match.match_id,
+            "game_creation": match.game_creation,
+            "game_duration": match.game_duration,
+            "win": win,
+            "champion_name": p.champion_name,
+            "champion_icon": p.champion_icon,
+            "kills": p.kills,
+            "deaths": p.deaths,
+            "assists": p.assists,
+            "cs": p.total_minions_killed + p.neutral_minions_killed,
+            "gold": p.gold_earned,
+            "damage_dealt": p.total_damage_dealt_to_champions,
+            "vision_score": p.vision_score,
+            "our_team": [{"summoner_name": pt.summoner_name or "Unknown", "champion_name": pt.champion_name, "champion_icon": pt.champion_icon, "kills": pt.kills, "deaths": pt.deaths, "assists": pt.assists, "cs": pt.total_minions_killed + pt.neutral_minions_killed, "gold": pt.gold_earned, "damage_dealt": pt.total_damage_dealt_to_champions, "vision_score": pt.vision_score, "role": pt.team_position, "puuid": pt.puuid} for pt in our_team],
+            "enemy_team": [{"summoner_name": pt.summoner_name or "Unknown", "champion_name": pt.champion_name, "champion_icon": pt.champion_icon, "kills": pt.kills, "deaths": pt.deaths, "assists": pt.assists, "cs": pt.total_minions_killed + pt.neutral_minions_killed, "gold": pt.gold_earned, "damage_dealt": pt.total_damage_dealt_to_champions, "vision_score": pt.vision_score, "role": pt.team_position, "puuid": pt.puuid} for pt in enemy_team]
+        })
+    
+    return jsonify({"matches": matches})

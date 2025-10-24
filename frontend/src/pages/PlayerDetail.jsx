@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { User, Trophy, TrendingUp, ArrowLeft, Trash2 } from 'lucide-react';
 import api from '../config/api';
+import { getChampionIconUrl } from '../utils/championHelper';
+import { displayRole } from '../utils/roleMapping';
 
 const PlayerDetail = () => {
   const { id } = useParams();
@@ -136,7 +138,7 @@ const PlayerDetail = () => {
                           </Link>
                           {team.role && (
                             <span className={`ml-1 text-sm ${getRoleColor(team.role)}`}>
-                              ({team.role})
+                              ({displayRole(team.role)})
                             </span>
                           )}
                           {idx < teams.length - 1 && <span className="text-slate-500">, </span>}
@@ -241,48 +243,28 @@ const PlayerDetail = () => {
               <p className="text-slate-400">Keine Champion-Daten verfügbar</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
               {champions.slice(0, 12).map((champ) => (
-                <div key={champ.champion_id} className="group relative overflow-hidden rounded-lg bg-slate-800/40 backdrop-blur border border-slate-700/50 hover:border-cyan-500/50 transition-all duration-300">
-                  {/* Champion Icon */}
-                  <div className="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-800/60 to-slate-800/40">
-                    <img
-                      src={`https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${champ.champion_id}.png`}
-                      alt={champ.champion_name}
-                      className="w-12 h-12 rounded-lg border-2 border-slate-700 group-hover:border-cyan-500 transition-colors"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white truncate">
-                        {champ.champion_name}
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        {champ.games_played || 0} Games
-                      </p>
-                    </div>
+                <div key={champ.champion_id} className="flex items-center gap-3 px-3 py-2 bg-surface/40 hover:bg-surface-hover rounded-lg border border-border/50 hover:border-primary/30 transition-all duration-200 group">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                    <img src={getChampionIconUrl(champ.champion_id)} alt={champ.champion_name} className="w-full h-full object-cover scale-110" onError={(e) => e.target.style.display = 'none'} />
                   </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-2 p-3 text-xs">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-white text-sm truncate">{champ.champion_name}</h3>
+                    <p className="text-xs text-slate-400">{champ.games_played || 0} Games</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs flex-shrink-0">
                     <div className="text-center">
-                      <p className="text-slate-500 mb-0.5">WR</p>
-                      <p className={`font-bold ${(champ.winrate || 0) >= 50 ? 'text-success' : 'text-error'}`}>
-                        {champ.winrate !== null && champ.winrate !== undefined ? champ.winrate.toFixed(0) : '0'}%
-                      </p>
+                      <p className={`font-bold ${(champ.winrate || 0) >= 50 ? 'text-success' : 'text-error'}`}>{champ.winrate?.toFixed(0) || 0}%</p>
+                      <p className="text-slate-500">WR</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-slate-500 mb-0.5">KDA</p>
-                      <p className="font-bold text-cyan-400">
-                        {champ.kda_average !== null && champ.kda_average !== undefined ? champ.kda_average.toFixed(1) : '0.0'}
-                      </p>
+                      <p className="font-bold text-cyan-400">{champ.kda_average?.toFixed(1) || '0.0'}</p>
+                      <p className="text-slate-500">KDA</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-slate-500 mb-0.5">CS/m</p>
-                      <p className="font-bold text-white">
-                        {champ.cs_per_min !== null && champ.cs_per_min !== undefined ? champ.cs_per_min.toFixed(1) : '0.0'}
-                      </p>
+                      <p className="font-bold text-white">{champ.cs_per_min?.toFixed(1) || '0.0'}</p>
+                      <p className="text-slate-500">CS/m</p>
                     </div>
                   </div>
                 </div>

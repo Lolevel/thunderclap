@@ -143,16 +143,16 @@ const MatchHistoryTab = ({ teamId }) => {
                   <div className="flex -space-x-2">
                     {ourTeam
                       .filter((p) => p.is_team_member)
-                      .map((p) => (
+                      .map((p, idx) => (
                         <div
-                          key={p.summoner_name}
+                          key={`${match.match_id}-preview-${p.summoner_name}-${idx}`}
                           className="w-8 h-8 rounded-full overflow-hidden border-2 border-surface"
                           title={`${p.summoner_name} - ${p.champion_name}`}
                         >
                           <img
                             src={getChampionUrl(p)}
                             alt={p.champion_name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover scale-110"
                             onError={(e) => {
                               e.target.style.display = 'none';
                             }}
@@ -182,9 +182,9 @@ const MatchHistoryTab = ({ teamId }) => {
                     UNSER TEAM
                   </h3>
                   <div className="space-y-2">
-                    {ourTeam.map((p) => (
+                    {ourTeam.map((p, idx) => (
                       <div
-                        key={p.summoner_name}
+                        key={`${match.match_id}-our-${p.summoner_name}-${idx}`}
                         className={`flex items-center gap-4 p-3 rounded-lg ${
                           p.is_team_member ? 'bg-primary/10' : 'bg-surface-hover'
                         }`}
@@ -194,7 +194,7 @@ const MatchHistoryTab = ({ teamId }) => {
                           <img
                             src={getChampionUrl(p)}
                             alt={p.champion_name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover scale-120"
                             onError={(e) => {
                               e.target.style.display = 'none';
                             }}
@@ -279,9 +279,9 @@ const MatchHistoryTab = ({ teamId }) => {
                     GEGNER
                   </h3>
                   <div className="space-y-2">
-                    {enemyTeam.map((p) => (
+                    {enemyTeam.map((p, idx) => (
                       <div
-                        key={p.summoner_name}
+                        key={`${match.match_id}-enemy-${p.summoner_name}-${idx}`}
                         className={`flex items-center gap-4 p-3 rounded-lg ${
                           p.is_team_member ? 'bg-primary/10' : 'bg-surface-hover'
                         }`}
@@ -291,7 +291,7 @@ const MatchHistoryTab = ({ teamId }) => {
                           <img
                             src={getChampionUrl(p)}
                             alt={p.champion_name}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover scale-110"
                             onError={(e) => {
                               e.target.style.display = 'none';
                             }}

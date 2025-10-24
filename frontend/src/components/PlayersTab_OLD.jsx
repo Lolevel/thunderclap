@@ -155,90 +155,101 @@ const PlayersTab = ({
 				</div>
 			</div>
 
-			{/* Roster Grid - REDESIGNED COMPACT */}
-			<div className="grid grid-cols-1 gap-2">
+			{/* Roster Grid */}
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 				{sortedRoster.map((entry) => (
 					<div
 						key={`${entry.id}-${entry.player.id}`}
-						className="flex items-center gap-3 px-4 py-2.5 bg-surface/40 hover:bg-surface-hover rounded-lg border border-border/50 hover:border-primary/30 transition-all duration-200 group">
-						{/* Checkbox */}
-						<button
-							onClick={() => togglePlayerSelection(entry.player.id)}
-							className="flex-shrink-0">
-							{selectedPlayers.includes(entry.player.id) ? (
-								<CheckSquare className="w-4 h-4 text-primary" />
-							) : (
-								<Square className="w-4 h-4 text-text-muted" />
-							)}
-						</button>
+						className="card hover:bg-surface-hover transition-all duration-200 group">
+						<div className="flex items-center gap-4">
+							{/* Checkbox for selection */}
+							<button
+								onClick={() => togglePlayerSelection(entry.player.id)}
+								className="p-1 hover:bg-surface-hover rounded transition-colors">
+								{selectedPlayers.includes(entry.player.id) ? (
+									<CheckSquare className="w-5 h-5 text-primary" />
+								) : (
+									<Square className="w-5 h-5 text-text-muted" />
+								)}
+							</button>
 
-						{/* Role indicator */}
-						<div
-							className={`w-2 h-2 rounded-full flex-shrink-0 ${getRoleColor(entry.role)}`}
-							title={displayRole(entry.role)}
-						/>
+							{/* Role indicator */}
+							<div
+								className={`w-3 h-3 rounded-full ${getRoleColor(entry.role)}`}
+								title={displayRole(entry.role)}
+							/>
 
-						{/* Player info */}
-						<Link
-							to={`/players/${entry.player.id}`}
-							className="flex-1 min-w-0">
-							<div className="flex items-baseline gap-2">
+							{/* Player info */}
+							<Link
+								to={`/players/${entry.player.id}`}
+								className="flex-1 min-w-0">
 								<h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
 									{entry.player.summoner_name}
 								</h3>
-								<span className="text-xs text-text-muted flex-shrink-0">
-									{displayRole(entry.role)}
-								</span>
-							</div>
-						</Link>
+								<p className="text-sm text-text-muted">
+									{displayRole(entry.role) || 'Unknown'}
+								</p>
+							</Link>
 
-						{/* Compact Rank Display */}
-						{entry.player.soloq && (
-							<div className="flex items-center gap-2 px-2.5 py-1 bg-primary/5 rounded border border-primary/20 flex-shrink-0">
-								{entry.player.soloq.icon_url && (
-									<div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0">
-										<img
-											src={entry.player.soloq.icon_url}
-											alt={entry.player.soloq.display}
-											className="w-full h-full object-cover scale-110"
-											onError={(e) => {
-												e.target.style.display = 'none';
-											}}
-										/>
+							{/* Rank Display */}
+							<div className="flex flex-col gap-1">
+								{/* Solo/Duo Queue Rank */}
+								{entry.player.soloq && (
+									<div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary/10 to-primary/5 rounded border border-primary/20">
+										{entry.player.soloq.icon_url && (
+											<img
+												src={entry.player.soloq.icon_url}
+												alt={entry.player.soloq.display}
+												className="w-6 h-6 rounded-full"
+												onError={(e) => {
+													e.target.style.display = 'none';
+												}}
+											/>
+										)}
+										<div className="flex flex-col">
+											<span className="text-xs font-semibold text-text-primary">
+												{entry.player.soloq.display}
+											</span>
+											<span className="text-xs text-text-muted">
+												{entry.player.soloq.lp} LP
+											</span>
+										</div>
 									</div>
 								)}
-								<div className="flex items-center gap-1.5">
-									<span className="text-xs font-semibold text-text-primary whitespace-nowrap">
-										{entry.player.soloq.display}
+
+								{/* Flex Queue Rank (optional, smaller) */}
+								{entry.player.flexq && (
+									<div className="flex items-center gap-1.5 px-2 py-1 bg-surface-hover rounded text-xs">
+										<span className="text-text-muted">Flex:</span>
+										<span className="text-text-secondary font-medium">
+											{entry.player.flexq.display}
+										</span>
+									</div>
+								)}
+
+								{/* Unranked */}
+								{!entry.player.soloq && !entry.player.flexq && (
+									<span className="text-xs text-text-muted px-2 py-1 bg-surface-hover rounded">
+										Unranked
 									</span>
-									<span className="text-xs text-text-muted">
-										{entry.player.soloq.lp}LP
-									</span>
-								</div>
+								)}
 							</div>
-						)}
 
-						{/* Unranked */}
-						{!entry.player.soloq && !entry.player.flexq && (
-							<span className="text-xs text-text-muted px-2 py-1 bg-surface-hover rounded flex-shrink-0">
-								Unranked
-							</span>
-						)}
-
-						{/* Actions */}
-						<div className="flex items-center gap-1 flex-shrink-0">
-							<button
-								onClick={() => openPlayerOpgg(entry.player.id)}
-								className="p-1.5 hover:bg-primary/10 rounded transition-colors"
-								title="OP.GG öffnen">
-								<ExternalLink className="w-3.5 h-3.5 text-primary" />
-							</button>
-							<button
-								onClick={() => setShowRemoveConfirm(entry)}
-								className="p-1.5 hover:bg-error/10 rounded transition-colors"
-								title="Spieler entfernen">
-								<Trash2 className="w-3.5 h-3.5 text-error" />
-							</button>
+							{/* Actions */}
+							<div className="flex items-center gap-2">
+								<button
+									onClick={() => openPlayerOpgg(entry.player.id)}
+									className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+									title="OP.GG öffnen">
+									<ExternalLink className="w-4 h-4 text-primary" />
+								</button>
+								<button
+									onClick={() => setShowRemoveConfirm(entry)}
+									className="p-2 hover:bg-error/10 rounded-lg transition-colors"
+									title="Spieler entfernen">
+									<Trash2 className="w-4 h-4 text-error" />
+								</button>
+							</div>
 						</div>
 					</div>
 				))}
