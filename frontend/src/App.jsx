@@ -5,6 +5,8 @@ import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
 import Players from './pages/Players';
 import PlayerDetail from './pages/PlayerDetail';
+import Login from './pages/Login';
+import ProtectedRoute from './components/ProtectedRoute';
 import { ToastProvider } from './components/ToastContainer';
 
 function App() {
@@ -12,7 +14,15 @@ function App() {
     <ToastProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          {/* Public route */}
+          <Route path="/login" element={<Login />} />
+
+          {/* Protected routes */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }>
             <Route index element={<Dashboard />} />
             <Route path="teams" element={<Teams />} />
             <Route path="teams/:id" element={<TeamDetail />} />

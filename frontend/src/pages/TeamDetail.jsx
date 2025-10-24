@@ -173,13 +173,13 @@ const TeamDetail = () => {
 							<button
 								onClick={handleRefreshData}
 								disabled={refreshing}
-								className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 flex items-center gap-2">
+								className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 flex items-center gap-2 cursor-pointer">
 								<RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
 								{refreshing ? 'Aktualisiere...' : 'Daten aktualisieren'}
 							</button>
 							<button
 								onClick={() => setShowDeleteModal(true)}
-								className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex items-center gap-2">
+								className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex items-center gap-2 cursor-pointer">
 								<Trash2 className="w-4 h-4" />
 								Team löschen
 							</button>
@@ -211,7 +211,7 @@ const TeamDetail = () => {
 									key={tab.id}
 									onClick={() => setActiveTab(tab.id)}
 									className={`
-										flex items-center gap-2 px-4 py-3 border-b-2 transition-colors duration-300
+										flex items-center gap-2 px-4 py-3 border-b-2 transition-colors duration-300 cursor-pointer
 										${
 											activeTab === tab.id
 												? 'border-cyan-400 text-cyan-400'
@@ -298,13 +298,13 @@ const TeamDetail = () => {
 										setShowDeleteModal(false);
 										setDeletePlayersOption(false);
 									}}
-									className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-300"
+									className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-300 cursor-pointer"
 									disabled={deletingTeam}>
 									Abbrechen
 								</button>
 								<button
 									onClick={handleDeleteTeam}
-									className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex items-center justify-center gap-2"
+									className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
 									disabled={deletingTeam}>
 									{deletingTeam ? (
 										<>

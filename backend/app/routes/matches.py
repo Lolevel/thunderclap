@@ -6,8 +6,15 @@ from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import Team, Match
 from app.services import MatchFetcher
+from app.middleware.auth import require_auth
 
 bp = Blueprint('matches', __name__, url_prefix='/api/matches')
+
+# Apply authentication to all routes
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route('/fetch/team/<team_id>', methods=['POST'])

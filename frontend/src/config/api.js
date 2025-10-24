@@ -12,7 +12,11 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Add any auth tokens here if needed later
+    // Add access token to requests
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -26,6 +30,13 @@ api.interceptors.response.use(
   (error) => {
     // Handle errors globally
     console.error('API Error:', error.response?.data || error.message);
+
+    // Handle 401 Unauthorized - redirect to login
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token');
+      window.location.href = '/login';
+    }
+
     return Promise.reject(error);
   }
 );

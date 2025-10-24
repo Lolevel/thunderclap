@@ -6,8 +6,15 @@ from flask import Blueprint, request, jsonify, current_app
 from datetime import datetime
 from app.models import Team, TeamStats
 from app.services import LineupPredictor, DraftAnalyzer, StatsCalculator
+from app.middleware.auth import require_auth
 
 bp = Blueprint("scouting", __name__, url_prefix="/api/scout")
+
+# Apply authentication to all routes
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route("/predict-lineup", methods=["POST"])

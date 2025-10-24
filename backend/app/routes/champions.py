@@ -6,11 +6,18 @@ Endpoints for champion data management
 from flask import Blueprint, jsonify, request
 from app.utils.community_dragon import sync_champions_from_community_dragon, get_champion_by_id
 from app.models.champion import Champion
+from app.middleware.auth import require_auth
 import logging
 
 logger = logging.getLogger(__name__)
 
 champions_bp = Blueprint('champions', __name__, url_prefix='/api/champions')
+
+# Apply authentication to all routes
+@champions_bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @champions_bp.route('/sync', methods=['POST'])

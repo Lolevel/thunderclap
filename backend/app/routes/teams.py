@@ -7,9 +7,16 @@ from app import db
 from app.models import Team, TeamRoster, Player
 from app.services import RiotAPIClient, MatchFetcher
 from app.utils import parse_opgg_url
+from app.middleware.auth import require_auth
 from datetime import datetime
 
 bp = Blueprint("teams", __name__, url_prefix="/api/teams")
+
+# Apply authentication to all routes in this blueprint
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route("/import", methods=["POST"])
@@ -246,6 +253,15 @@ def delete_team(team_id):
 
         # Get roster before deletion
         active_roster = [r for r in team.rosters if r.leave_date is None]
+
+        # Remove team_id references from match_participants to avoid foreign key constraint violation
+        from app.models import MatchParticipant, MatchTeamStats, Match
+        MatchParticipant.query.filter_by(team_id=team.id).update({MatchParticipant.team_id: None})
+        MatchTeamStats.query.filter_by(team_id=team.id).update({MatchTeamStats.team_id: None})
+
+        # Remove team references from matches (winning/losing team)
+        Match.query.filter_by(winning_team_id=team.id).update({Match.winning_team_id: None})
+        Match.query.filter_by(losing_team_id=team.id).update({Match.losing_team_id: None})
 
         if delete_players_flag:
             # Delete all players associated with this team

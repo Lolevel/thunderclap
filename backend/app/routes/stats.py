@@ -5,8 +5,15 @@ Best Practice: Separate routes for different concerns
 from flask import Blueprint, request, jsonify, current_app
 from app.models import Team, TeamStats
 from app.services import StatsCalculator
+from app.middleware.auth import require_auth
 
 bp = Blueprint('stats', __name__, url_prefix='/api/stats')
+
+# Apply authentication to all routes
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route('/team/<team_id>/calculate', methods=['POST'])

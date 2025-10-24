@@ -8,11 +8,18 @@ from app import db
 from app.models import Team, TeamStats, Player, PlayerChampion, Match, MatchParticipant
 from app.services.draft_analyzer import DraftAnalyzer
 from app.services.stats_calculator import StatsCalculator
+from app.middleware.auth import require_auth
 from sqlalchemy import func, desc
 from collections import defaultdict
 import urllib.parse
 
 bp = Blueprint("analytics", __name__, url_prefix="/api")
+
+# Apply authentication to all routes
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route("/teams/<team_id>/overview", methods=["GET"])

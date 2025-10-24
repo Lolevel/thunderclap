@@ -14,11 +14,8 @@ const Teams = () => {
 
   const fetchTeams = async () => {
     try {
-      const API_BASE_URL =
-        import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-      const response = await fetch(`${API_BASE_URL}/teams`);
-      const data = await response.json();
-      setTeams(data.teams || []);
+      const response = await api.get('/teams');
+      setTeams(response.data.teams || []);
     } catch (error) {
       console.error("Failed to fetch teams:", error);
       setTeams([]);

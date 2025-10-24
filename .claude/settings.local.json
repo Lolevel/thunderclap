@@ -16,7 +16,16 @@
       "Bash(docker-compose down:*)",
       "Bash(cat:*)",
       "Bash(docker ps:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(for file in analytics matches scouting stats champions)",
+      "Bash(do head -15 \"backend/app/routes/$file.py\")",
+      "Bash(echo \"$file needs auth\" done)",
+      "Bash(for file in stats scouting champions)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(head:*)",
+      "Bash(done)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

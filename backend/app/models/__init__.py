@@ -9,6 +9,7 @@ from .draft import DraftPattern
 from .prediction import LineupPrediction
 from .scouting import ScoutingReport
 from .champion import Champion
+from .access_token import AccessToken
 
 __all__ = [
     "Team",
@@ -25,4 +26,5 @@ __all__ = [
     "LineupPrediction",
     "ScoutingReport",
     "Champion",
+    "AccessToken",
 ]

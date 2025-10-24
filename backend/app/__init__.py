@@ -27,13 +27,16 @@ def create_app(config_name='development'):
     # Load configuration
     app.config.from_object(config[config_name])
 
+    # Disable strict slashes to prevent 308 redirects that lose headers
+    app.url_map.strict_slashes = False
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
     CORS(app)
 
     # Register blueprints
-    from app.routes import teams, players, scouting, matches, stats, analytics, champions
+    from app.routes import teams, players, scouting, matches, stats, analytics, champions, auth
     app.register_blueprint(teams.bp)
     app.register_blueprint(players.bp)
     app.register_blueprint(scouting.bp)
@@ -41,6 +44,7 @@ def create_app(config_name='development'):
     app.register_blueprint(stats.bp)
     app.register_blueprint(analytics.bp)  # NEW: Analytics endpoints
     app.register_blueprint(champions.champions_bp)  # NEW: Champions endpoints
+    app.register_blueprint(auth.bp)  # NEW: Authentication endpoints
 
     # Health check endpoint
     @app.route('/health')

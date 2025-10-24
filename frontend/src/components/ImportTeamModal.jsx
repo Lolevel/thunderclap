@@ -67,7 +67,7 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
           </h2>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-surface-hover rounded-lg transition-colors"
+            className="p-2 hover:bg-surface-hover rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5 text-text-muted" />
           </button>
@@ -78,7 +78,7 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
           <button
             type="button"
             onClick={() => setImportType('team')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md transition-all cursor-pointer ${
               importType === 'team'
                 ? 'bg-primary text-white'
                 : 'text-text-secondary hover:text-text-primary'
@@ -90,7 +90,7 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
           <button
             type="button"
             onClick={() => setImportType('player')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md transition-all ${
+            className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md transition-all cursor-pointer ${
               importType === 'player'
                 ? 'bg-primary text-white'
                 : 'text-text-secondary hover:text-text-primary'
@@ -186,14 +186,14 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
             <button
               type="button"
               onClick={handleClose}
-              className="btn btn-secondary flex-1"
+              className="btn btn-secondary flex-1 cursor-pointer"
               disabled={loading}
             >
               Abbrechen
             </button>
             <button
               type="submit"
-              className="btn btn-primary flex-1"
+              className="btn btn-primary flex-1 cursor-pointer"
               disabled={loading || success}
             >
               {loading ? 'Importiere...' : 'Importieren'}

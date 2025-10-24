@@ -196,7 +196,7 @@ const PlayerDetail = () => {
             </div>
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="px-4 py-2 bg-slate-800/50 backdrop-blur border border-slate-700/50 hover:border-slate-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2"
+              className="px-4 py-2 bg-slate-800/50 backdrop-blur border border-slate-700/50 hover:border-slate-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2 cursor-pointer"
             >
               <Trash2 className="w-4 h-4" />
               Spieler löschen
@@ -215,14 +215,14 @@ const PlayerDetail = () => {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="btn btn-secondary flex-1"
+                  className="btn btn-secondary flex-1 cursor-pointer"
                   disabled={deleting}
                 >
                   Abbrechen
                 </button>
                 <button
                   onClick={handleDeletePlayer}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex-1"
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all duration-300 flex-1 cursor-pointer"
                   disabled={deleting}
                 >
                   {deleting ? 'Lösche...' : 'Löschen'}
@@ -349,7 +349,7 @@ const PlayerDetail = () => {
                   >
                     <button
                       onClick={() => toggleMatch(match.match_id)}
-                      className="w-full text-left p-4"
+                      className="w-full text-left p-4 cursor-pointer"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-6">
@@ -543,7 +543,7 @@ const PlayerDetail = () => {
               <button
                 onClick={loadMoreMatches}
                 disabled={loadingMore}
-                className="px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {loadingMore ? 'Lädt...' : 'Mehr laden'}
               </button>

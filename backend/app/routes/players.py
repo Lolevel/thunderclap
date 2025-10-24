@@ -6,8 +6,15 @@ from app import db
 from app.models import Player, PlayerChampion
 from app.services import RiotAPIClient, MatchFetcher, StatsCalculator
 from app.utils import parse_opgg_url
+from app.middleware.auth import require_auth
 
 bp = Blueprint('players', __name__, url_prefix='/api/players')
+
+# Apply authentication to all routes
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route('/<player_id>', methods=['GET'])

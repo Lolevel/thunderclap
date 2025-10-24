@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Search,
 } from "lucide-react";
+import api from "../config/api";
 
 const Dashboard = () => {
   const [teams, setTeams] = useState([]);
@@ -22,15 +23,13 @@ const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const API_BASE_URL =
-        import.meta.env.VITE_API_URL || "http://localhost:5000/api";
       const [teamsRes, dashboardStatsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/teams`),
-        fetch(`${API_BASE_URL}/dashboard/stats`),
+        api.get('/teams'),
+        api.get('/dashboard/stats'),
       ]);
 
-      const teamsData = await teamsRes.json();
-      const dashboardStats = await dashboardStatsRes.json();
+      const teamsData = teamsRes.data;
+      const dashboardStats = dashboardStatsRes.data;
 
       const teamsArray = teamsData.teams || [];
 
@@ -131,7 +130,7 @@ const Dashboard = () => {
             <div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
               <Users className="w-12 h-12 text-slate-500 mx-auto mb-4" />
               <p className="text-slate-300 mb-4">Noch keine Teams importiert</p>
-              <button className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 font-medium shadow-lg shadow-blue-500/20">
+              <button className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 font-medium shadow-lg shadow-blue-500/20 cursor-pointer">
                 Erstes Team importieren
               </button>
             </div>
