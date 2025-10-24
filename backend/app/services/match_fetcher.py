@@ -565,6 +565,7 @@ class MatchFetcher:
         herald = objectives.get('riftHerald', {})
         tower = objectives.get('tower', {})
         inhibitor = objectives.get('inhibitor', {})
+        champion = objectives.get('champion', {})  # Contains firstBlood
 
         team_stats = MatchTeamStats(
             match_id=match.id,
@@ -579,6 +580,7 @@ class MatchFetcher:
             first_dragon=dragon.get('first', False),
             first_herald=herald.get('first', False),
             first_tower=tower.get('first', False),
+            first_blood=champion.get('first', False),  # First blood from champion objective
             bans=bans  # Store full ban list with pickTurn
         )
 
