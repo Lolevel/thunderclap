@@ -5,6 +5,7 @@
 /**
  * Maps champion names from database/API format to Data Dragon format
  * Handles special cases like Wukong (MonkeyKing internally)
+ * Removes spaces from champion names (e.g., "Twisted Fate" -> "TwistedFate")
  */
 export const mapChampionNameForAssets = (championName) => {
   if (!championName) return '';
@@ -14,7 +15,13 @@ export const mapChampionNameForAssets = (championName) => {
     'Wukong': 'MonkeyKing',       // User-facing name -> internal name
   };
 
-  return nameMap[championName] || championName;
+  // If there's a special mapping, use it
+  if (nameMap[championName]) {
+    return nameMap[championName];
+  }
+
+  // Remove spaces from champion names (e.g., "Twisted Fate" -> "TwistedFate")
+  return championName.replace(/\s+/g, '');
 };
 
 /**
@@ -40,12 +47,17 @@ export const getChampionIconUrl = (championId) => {
 
 /**
  * Gets champion icon URL by name (fallback for when ID is not available)
+ * Uses Community Dragon with 'latest' patch for consistency
+ * Note: This requires looking up the champion ID from name, which is not ideal.
+ * Prefer using getChampionIconUrl(championId) when possible.
  * @param {string} championName - Champion name from database
- * @returns {string} URL to champion icon
+ * @returns {string} URL to champion icon (Data Dragon fallback)
  */
 export const getChampionIconUrlByName = (championName) => {
   const mappedName = mapChampionNameForAssets(championName);
-  return `https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/${mappedName}.png`;
+  // Fallback to Data Dragon since we don't have champion ID
+  // Community Dragon requires champion ID, not name
+  return `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${mappedName}.png`;
 };
 
 /**

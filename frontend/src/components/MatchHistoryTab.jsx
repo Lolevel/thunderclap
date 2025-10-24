@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users } from 'lucide-react';
 import api from '../config/api';
 import { displayRole } from '../utils/roleMapping';
+import { getItemIconUrl, filterEmptyItems, handleItemError } from '../utils/itemHelper';
 
 const MatchHistoryTab = ({ teamId }) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expandedMatches, setExpandedMatches] = useState(new Set());
+  const [matchesLimit, setMatchesLimit] = useState(50);
 
   useEffect(() => {
     fetchMatches();
@@ -14,12 +17,26 @@ const MatchHistoryTab = ({ teamId }) => {
 
   const fetchMatches = async () => {
     try {
-      const response = await api.get(`/teams/${teamId}/matches?limit=50`);
+      const response = await api.get(`/teams/${teamId}/matches?limit=${matchesLimit}`);
       setMatches(response.data.matches || []);
     } catch (error) {
       console.error('Failed to fetch matches:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreMatches = async () => {
+    setLoadingMore(true);
+    const newLimit = matchesLimit + 50;
+    try {
+      const response = await api.get(`/teams/${teamId}/matches?limit=${newLimit}`);
+      setMatches(response.data.matches || []);
+      setMatchesLimit(newLimit);
+    } catch (error) {
+      console.error('Failed to load more matches:', error);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -94,9 +111,15 @@ const MatchHistoryTab = ({ teamId }) => {
 
       {matches.map((match) => {
         const isExpanded = expandedMatches.has(match.match_id);
-        // Backend returns our_team and enemy_team instead of participants
+
+        // Combine both teams and sort by side (Blue=100, Red=200)
+        const allPlayers = [...(match.our_team || []), ...(match.enemy_team || [])];
+        const blueTeam = allPlayers.filter(p => p.riot_team_id === 100);
+        const redTeam = allPlayers.filter(p => p.riot_team_id === 200);
+
+        // Check which side we're on
         const ourTeam = match.our_team || [];
-        const enemyTeam = match.enemy_team || [];
+        const weAreBlue = ourTeam.length > 0 && ourTeam[0].riot_team_id === 100;
 
         return (
           <div
@@ -176,13 +199,14 @@ const MatchHistoryTab = ({ teamId }) => {
             {/* Match Details (expandable) */}
             {isExpanded && (
               <div className="mt-6 pt-6 border-t border-border space-y-6">
-                {/* Our Team */}
+                {/* Blue Side Team */}
                 <div>
-                  <h3 className="text-sm font-semibold text-primary mb-3">
-                    UNSER TEAM
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <span className="text-blue-400">BLUE SIDE</span>
+                    {weAreBlue && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Unser Team</span>}
                   </h3>
                   <div className="space-y-2">
-                    {ourTeam.map((p, idx) => (
+                    {blueTeam.map((p, idx) => (
                       <div
                         key={`${match.match_id}-our-${p.summoner_name}-${idx}`}
                         className={`flex items-center gap-4 p-3 rounded-lg ${
@@ -222,6 +246,20 @@ const MatchHistoryTab = ({ teamId }) => {
                           <p className={`text-xs ${getRoleColor(p.role)}`}>
                             {displayRole(p.role)}
                           </p>
+                        </div>
+
+                        {/* Items */}
+                        <div className="flex gap-1">
+                          {filterEmptyItems(p.items || []).map((itemId, itemIdx) => (
+                            <div key={itemIdx} className="w-7 h-7 rounded overflow-hidden bg-surface-lighter">
+                              <img
+                                src={getItemIconUrl(itemId, match.game_version)}
+                                alt={`Item ${itemId}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => handleItemError(e, itemId)}
+                              />
+                            </div>
+                          ))}
                         </div>
 
                         {/* KDA */}
@@ -273,13 +311,14 @@ const MatchHistoryTab = ({ teamId }) => {
                   </div>
                 </div>
 
-                {/* Enemy Team */}
+                {/* Red Side Team */}
                 <div>
-                  <h3 className="text-sm font-semibold text-error mb-3">
-                    GEGNER
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <span className="text-red-400">RED SIDE</span>
+                    {!weAreBlue && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Unser Team</span>}
                   </h3>
                   <div className="space-y-2">
-                    {enemyTeam.map((p, idx) => (
+                    {redTeam.map((p, idx) => (
                       <div
                         key={`${match.match_id}-enemy-${p.summoner_name}-${idx}`}
                         className={`flex items-center gap-4 p-3 rounded-lg ${
@@ -319,6 +358,20 @@ const MatchHistoryTab = ({ teamId }) => {
                           <p className={`text-xs ${getRoleColor(p.role)}`}>
                             {displayRole(p.role)}
                           </p>
+                        </div>
+
+                        {/* Items */}
+                        <div className="flex gap-1">
+                          {filterEmptyItems(p.items || []).map((itemId, itemIdx) => (
+                            <div key={itemIdx} className="w-7 h-7 rounded overflow-hidden bg-surface-lighter">
+                              <img
+                                src={getItemIconUrl(itemId, match.game_version)}
+                                alt={`Item ${itemId}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => handleItemError(e, itemId)}
+                              />
+                            </div>
+                          ))}
                         </div>
 
                         {/* KDA */}
@@ -374,6 +427,17 @@ const MatchHistoryTab = ({ teamId }) => {
           </div>
         );
       })}
+      {matches.length > 0 && matches.length % 50 === 0 && (
+        <div className="mt-6 text-center">
+          <button
+            onClick={loadMoreMatches}
+            disabled={loadingMore}
+            className="px-6 py-3 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? 'Lädt...' : 'Mehr laden'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

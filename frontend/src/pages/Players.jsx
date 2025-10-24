@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Search } from 'lucide-react';
 import api from '../config/api';
-import { displayRole } from '../utils/roleMapping';
+import RoleIcon from '../components/RoleIcon';
 
 const Players = () => {
   const [players, setPlayers] = useState([]);
@@ -68,17 +68,6 @@ const Players = () => {
   const filteredPlayers = players.filter((player) =>
     player.summoner_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const getRoleColor = (role) => {
-    const colors = {
-      TOP: 'text-blue-400',
-      JUNGLE: 'text-green-400',
-      MIDDLE: 'text-purple-400',
-      BOTTOM: 'text-red-400',
-      UTILITY: 'text-yellow-400',
-    };
-    return colors[role] || 'text-text-muted';
-  };
 
   if (loading) {
     return (
@@ -146,9 +135,7 @@ const Players = () => {
                           <span key={team.id} className="flex items-center gap-1">
                             <span className="text-slate-400">{team.tag || team.name}</span>
                             {team.role && (
-                              <span className={`text-xs ${getRoleColor(team.role)}`}>
-                                ({displayRole(team.role)})
-                              </span>
+                              <RoleIcon role={team.role} size={14} />
                             )}
                             {idx < player.teams.length - 1 && <span className="text-slate-400">,</span>}
                           </span>

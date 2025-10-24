@@ -264,8 +264,8 @@ const TeamOverviewTab = ({ teamId }) => {
 											<div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center flex-shrink-0">
 												<span className="text-slate-300 font-bold text-xs">#{i+1}</span>
 											</div>
-											<div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-												<img src={getChampionSplashUrl(top_5_champions[i].champion, 0)} alt={top_5_champions[i].champion} className="w-full h-full object-cover" onError={(e) => handleSplashError(e, top_5_champions[i].champion)} />
+											<div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center bg-surface-lighter">
+												<img src={top_5_champions[i].champion_icon} alt={top_5_champions[i].champion} className="w-full h-full object-cover" style={{ transform: 'scale(1.2)' }} onError={(e) => { e.target.style.display = 'none'; }} />
 											</div>
 											<div className="flex-1 min-w-0">
 												<h4 className="font-semibold text-text-primary text-sm truncate">{top_5_champions[i].champion}</h4>

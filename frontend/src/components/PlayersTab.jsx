@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { displayRole, sortByRole } from '../utils/roleMapping';
 import { openPlayerOpgg, openTeamOpgg } from '../utils/opggHelper';
+import RoleIcon from './RoleIcon';
 
 const PlayersTab = ({
 	roster,
@@ -172,24 +173,18 @@ const PlayersTab = ({
 							)}
 						</button>
 
-						{/* Role indicator */}
-						<div
-							className={`w-2 h-2 rounded-full flex-shrink-0 ${getRoleColor(entry.role)}`}
-							title={displayRole(entry.role)}
-						/>
+						{/* Role icon */}
+						<div className="flex-shrink-0">
+							<RoleIcon role={entry.role} size={20} />
+						</div>
 
 						{/* Player info */}
 						<Link
 							to={`/players/${entry.player.id}`}
 							className="flex-1 min-w-0">
-							<div className="flex items-baseline gap-2">
-								<h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
-									{entry.player.summoner_name}
-								</h3>
-								<span className="text-xs text-text-muted flex-shrink-0">
-									{displayRole(entry.role)}
-								</span>
-							</div>
+							<h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
+								{entry.player.summoner_name}
+							</h3>
 						</Link>
 
 						{/* Compact Rank Display */}

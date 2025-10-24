@@ -14,7 +14,9 @@
       "Bash(docker-compose build:*)",
       "Bash(docker-compose up:*)",
       "Bash(docker-compose down:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker restart:*)"
     ],
     "deny": [],
     "ask": []

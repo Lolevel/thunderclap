@@ -1030,6 +1030,7 @@ def get_team_matches(team_id):
                     "champion_name": champ_info.get('name', p.champion_name),
                     "champion_icon": champ_info.get('icon_url'),
                     "role": display_role,
+                    "riot_team_id": p.riot_team_id,  # 100=Blue, 200=Red
                     "kills": p.kills or 0,
                     "deaths": p.deaths or 0,
                     "assists": p.assists or 0,
@@ -1039,6 +1040,10 @@ def get_team_matches(team_id):
                     "damage_taken": p.total_damage_taken or 0,
                     "vision_score": p.vision_score or 0,
                     "control_wards": p.control_wards_placed or 0,
+                    "items": [
+                        p.item0, p.item1, p.item2,
+                        p.item3, p.item4, p.item5, p.item6
+                    ],
                     "win": p.win
                 }
 
@@ -1051,6 +1056,7 @@ def get_team_matches(team_id):
                 "match_id": match.match_id,
                 "game_creation": match.game_creation or 0,  # Already in milliseconds
                 "game_duration": match.game_duration or 0,
+                "game_version": match.game_version,
                 "win": team_won,
                 "team_players_count": team_players_count,
                 "our_team": our_team_participants,
@@ -1104,53 +1110,120 @@ def get_dashboard_stats():
 
 @bp.route("/players/<player_id>/matches", methods=["GET"])
 def get_player_matches(player_id):
-    """Get match history for a specific player"""
-    from app.models.player import Player
-    from app.models.match_participant import MatchParticipant
-    from app.models.match import Match
-    
+    """
+    Get Prime League match history for a specific player
+
+    Query params:
+        limit: Number of matches (default: 50)
+
+    Returns:
+        {
+            "matches": [
+                {
+                    "match_id": "EUW1_...",
+                    "game_creation": 1234567890,
+                    "game_duration": 1800,
+                    "game_version": "14.24.1",
+                    "win": true,
+                    "our_team": [...],
+                    "enemy_team": [...]
+                }
+            ]
+        }
+    """
     player = Player.query.get(player_id)
     if not player:
         return jsonify({"error": "Player not found"}), 404
-    
-    limit = request.args.get('limit', 50, type=int)
-    
-    # Get matches where player participated
-    participants = MatchParticipant.query.filter_by(player_id=player_id).join(Match).order_by(Match.game_creation.desc()).limit(limit).all()
-    
-    matches = []
-    for p in participants:
-        match = p.match
-        if not match:
-            continue
-            
-        # Get all participants for this match
-        all_participants = MatchParticipant.query.filter_by(match_id=match.id).all()
-        
-        # Split into teams
-        our_team = [pt for pt in all_participants if pt.team_id == 100]
-        enemy_team = [pt for pt in all_participants if pt.team_id == 200]
-        
-        # Find which team our player was on
-        player_team = 100 if p.team_id == 100 else 200
-        win = (player_team == 100 and match.winning_team_id == 100) or (player_team == 200 and match.winning_team_id == 200)
-        
-        matches.append({
-            "match_id": match.match_id,
-            "game_creation": match.game_creation,
-            "game_duration": match.game_duration,
-            "win": win,
-            "champion_name": p.champion_name,
-            "champion_icon": p.champion_icon,
-            "kills": p.kills,
-            "deaths": p.deaths,
-            "assists": p.assists,
-            "cs": p.total_minions_killed + p.neutral_minions_killed,
-            "gold": p.gold_earned,
-            "damage_dealt": p.total_damage_dealt_to_champions,
-            "vision_score": p.vision_score,
-            "our_team": [{"summoner_name": pt.summoner_name or "Unknown", "champion_name": pt.champion_name, "champion_icon": pt.champion_icon, "kills": pt.kills, "deaths": pt.deaths, "assists": pt.assists, "cs": pt.total_minions_killed + pt.neutral_minions_killed, "gold": pt.gold_earned, "damage_dealt": pt.total_damage_dealt_to_champions, "vision_score": pt.vision_score, "role": pt.team_position, "puuid": pt.puuid} for pt in our_team],
-            "enemy_team": [{"summoner_name": pt.summoner_name or "Unknown", "champion_name": pt.champion_name, "champion_icon": pt.champion_icon, "kills": pt.kills, "deaths": pt.deaths, "assists": pt.assists, "cs": pt.total_minions_killed + pt.neutral_minions_killed, "gold": pt.gold_earned, "damage_dealt": pt.total_damage_dealt_to_champions, "vision_score": pt.vision_score, "role": pt.team_position, "puuid": pt.puuid} for pt in enemy_team]
-        })
-    
-    return jsonify({"matches": matches})
+
+    try:
+        limit = request.args.get('limit', 50, type=int)
+
+        # Get only TOURNAMENT matches where player participated
+        participants = MatchParticipant.query.filter_by(
+            player_id=player_id
+        ).join(
+            Match
+        ).filter(
+            Match.is_tournament_game == True
+        ).order_by(
+            Match.game_creation.desc()
+        ).limit(limit).all()
+
+        # Enrich champion data
+        from app.utils.champion_helper import batch_enrich_champions
+
+        matches = []
+        for p in participants:
+            match = p.match
+            if not match:
+                continue
+
+            # Get all participants for this match
+            all_participants = MatchParticipant.query.filter_by(
+                match_id=match.id
+            ).order_by(
+                MatchParticipant.riot_team_id,
+                MatchParticipant.participant_id
+            ).all()
+
+            # Enrich all champions in this match
+            champion_ids = [pt.champion_id for pt in all_participants]
+            champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
+
+            # Find which riot_team_id our player was on
+            our_riot_team_id = p.riot_team_id
+
+            # Split into teams
+            our_team = []
+            enemy_team = []
+
+            for pt in all_participants:
+                champ_info = champion_data_map.get(pt.champion_id, {
+                    'name': pt.champion_name,
+                    'icon_url': None
+                })
+
+                participant_data = {
+                    "summoner_name": pt.summoner_name or (pt.player.summoner_name if pt.player else "Unknown"),
+                    "champion_id": pt.champion_id,
+                    "champion_name": champ_info.get('name', pt.champion_name),
+                    "champion_icon": champ_info.get('icon_url'),
+                    "role": pt.team_position or pt.individual_position or pt.role,
+                    "riot_team_id": pt.riot_team_id,  # 100=Blue, 200=Red
+                    "kills": pt.kills or 0,
+                    "deaths": pt.deaths or 0,
+                    "assists": pt.assists or 0,
+                    "cs": (pt.total_minions_killed or 0) + (pt.neutral_minions_killed or 0),
+                    "gold": pt.gold_earned or 0,
+                    "damage_dealt": pt.total_damage_dealt_to_champions or 0,
+                    "vision_score": pt.vision_score or 0,
+                    "items": [
+                        pt.item0, pt.item1, pt.item2,
+                        pt.item3, pt.item4, pt.item5, pt.item6
+                    ],
+                    "win": pt.win
+                }
+
+                if pt.riot_team_id == our_riot_team_id:
+                    our_team.append(participant_data)
+                else:
+                    enemy_team.append(participant_data)
+
+            # Determine if player won
+            win = p.win
+
+            matches.append({
+                "match_id": match.match_id,
+                "game_creation": match.game_creation or 0,
+                "game_duration": match.game_duration or 0,
+                "game_version": match.game_version,
+                "win": win,
+                "our_team": our_team,
+                "enemy_team": enemy_team
+            })
+
+        return jsonify({"matches": matches}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching player matches: {str(e)}")
+        return jsonify({"error": "Failed to fetch player matches", "details": str(e)}), 500

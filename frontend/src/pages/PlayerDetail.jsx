@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { User, Trophy, TrendingUp, ArrowLeft, Trash2 } from 'lucide-react';
+import { User, Trophy, TrendingUp, ArrowLeft, Trash2, ChevronDown, ChevronUp, Calendar, Clock } from 'lucide-react';
 import api from '../config/api';
 import { getChampionIconUrl } from '../utils/championHelper';
 import { displayRole } from '../utils/roleMapping';
+import { getItemIconUrl, filterEmptyItems, handleItemError } from '../utils/itemHelper';
+import RoleIcon from '../components/RoleIcon';
 
 const PlayerDetail = () => {
   const { id } = useParams();
@@ -11,9 +13,13 @@ const PlayerDetail = () => {
   const [player, setPlayer] = useState(null);
   const [champions, setChampions] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedMatches, setExpandedMatches] = useState(new Set());
+  const [matchesLimit, setMatchesLimit] = useState(20);
 
   useEffect(() => {
     fetchPlayerData();
@@ -21,14 +27,16 @@ const PlayerDetail = () => {
 
   const fetchPlayerData = async () => {
     try {
-      const [playerRes, championsRes, teamsRes] = await Promise.all([
+      const [playerRes, championsRes, teamsRes, matchesRes] = await Promise.all([
         api.get(`/players/${id}`),
         api.get(`/players/${id}/champions?limit=20`),
-        api.get(`/teams/`).catch(() => ({ data: { teams: [] } }))
+        api.get(`/teams/`).catch(() => ({ data: { teams: [] } })),
+        api.get(`/players/${id}/matches?limit=${matchesLimit}`).catch(() => ({ data: { matches: [] } }))
       ]);
 
       setPlayer(playerRes.data);
       setChampions(championsRes.data.champions || []);
+      setMatches(matchesRes.data.matches || []);
 
       // Find teams this player belongs to
       const allTeams = teamsRes.data.teams || [];
@@ -84,6 +92,47 @@ const PlayerDetail = () => {
     }
   };
 
+  const toggleMatch = (matchId) => {
+    setExpandedMatches((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(matchId)) {
+        newSet.delete(matchId);
+      } else {
+        newSet.add(matchId);
+      }
+      return newSet;
+    });
+  };
+
+  const formatDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
+  const loadMoreMatches = async () => {
+    setLoadingMore(true);
+    const newLimit = matchesLimit + 20;
+    try {
+      const matchesRes = await api.get(`/players/${id}/matches?limit=${newLimit}`);
+      setMatches(matchesRes.data.matches || []);
+      setMatchesLimit(newLimit);
+    } catch (error) {
+      console.error('Failed to load more matches:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -130,17 +179,13 @@ const PlayerDetail = () => {
                 {teams.length > 0 && (
                   <>
                     <span className="text-slate-500">•</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       {teams.map((team, idx) => (
-                        <span key={team.id}>
+                        <span key={team.id} className="flex items-center gap-1.5">
+                          {team.role && <RoleIcon role={team.role} size={18} />}
                           <Link to={`/teams/${team.id}`} className="text-cyan-400 hover:text-cyan-300 transition-colors">
                             {team.name}
                           </Link>
-                          {team.role && (
-                            <span className={`ml-1 text-sm ${getRoleColor(team.role)}`}>
-                              ({displayRole(team.role)})
-                            </span>
-                          )}
                           {idx < teams.length - 1 && <span className="text-slate-500">, </span>}
                         </span>
                       ))}
@@ -269,6 +314,239 @@ const PlayerDetail = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Prime League Match History */}
+        <div>
+          <h2 className="text-xl font-bold text-white mb-4">Prime League Match History</h2>
+          {matches.length === 0 ? (
+            <div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
+              <Trophy className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+              <p className="text-slate-400">Keine Prime League Matches gefunden</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {matches.map((match) => {
+                const isExpanded = expandedMatches.has(match.match_id);
+
+                // Combine both teams and sort by side (Blue=100, Red=200)
+                const allPlayers = [...(match.our_team || []), ...(match.enemy_team || [])];
+                const blueTeam = allPlayers.filter(p => p.riot_team_id === 100);
+                const redTeam = allPlayers.filter(p => p.riot_team_id === 200);
+
+                // Check which side we're on for the win indicator
+                const ourTeam = match.our_team || [];
+                const weAreBlue = ourTeam.length > 0 && ourTeam[0].riot_team_id === 100;
+
+                return (
+                  <div
+                    key={match.match_id}
+                    className={`rounded-xl bg-slate-800/40 backdrop-blur border overflow-hidden ${
+                      match.win ? 'border-green-500/50' : 'border-red-500/50'
+                    }`}
+                  >
+                    <button
+                      onClick={() => toggleMatch(match.match_id)}
+                      className="w-full text-left p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-6">
+                          <div
+                            className={`px-4 py-2 rounded-lg font-bold ${
+                              match.win
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {match.win ? 'Sieg' : 'Niederlage'}
+                          </div>
+
+                          <div className="flex items-center gap-4 text-sm text-slate-400">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4" />
+                              {formatDate(match.game_creation)}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-4 h-4" />
+                              {formatDuration(match.game_duration)}
+                            </div>
+                          </div>
+
+                          <div className="flex -space-x-2">
+                            {ourTeam.slice(0, 5).map((p, idx) => (
+                              <div
+                                key={`${match.match_id}-preview-${idx}`}
+                                className="w-8 h-8 rounded-full overflow-hidden border-2 border-slate-800"
+                                title={`${p.summoner_name} - ${p.champion_name}`}
+                              >
+                                <img
+                                  src={p.champion_icon}
+                                  alt={p.champion_name}
+                                  className="w-full h-full object-cover scale-110"
+                                  onError={(e) => e.target.style.display = 'none'}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="text-slate-400">
+                          {isExpanded ? (
+                            <ChevronUp className="w-5 h-5" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5" />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-700/50 space-y-6">
+                        {/* Blue Side Team */}
+                        <div>
+                          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <span className="text-blue-400">BLUE SIDE</span>
+                            {weAreBlue && <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded">Unser Team</span>}
+                          </h3>
+                          <div className="space-y-2">
+                            {blueTeam.map((p, idx) => (
+                              <div
+                                key={`${match.match_id}-our-${idx}`}
+                                className="flex items-center gap-4 p-3 rounded-lg bg-slate-800/50"
+                              >
+                                <div className="w-12 h-12 rounded-lg overflow-hidden">
+                                  <img
+                                    src={p.champion_icon}
+                                    alt={p.champion_name}
+                                    className="w-full h-full object-cover scale-110"
+                                    onError={(e) => e.target.style.display = 'none'}
+                                  />
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-white truncate">
+                                    {p.summoner_name}
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    {displayRole(p.role)}
+                                  </p>
+                                </div>
+
+                                <div className="flex gap-1">
+                                  {filterEmptyItems(p.items).map((itemId, itemIdx) => (
+                                    <div key={itemIdx} className="w-8 h-8 rounded overflow-hidden bg-slate-700/50">
+                                      <img
+                                        src={getItemIconUrl(itemId, match.game_version)}
+                                        alt={`Item ${itemId}`}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => handleItemError(e, itemId)}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-white">
+                                    {p.kills}/{p.deaths}/{p.assists}
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    {p.deaths === 0
+                                      ? 'Perfect'
+                                      : ((p.kills + p.assists) / p.deaths).toFixed(2)}{' '}
+                                    KDA
+                                  </p>
+                                </div>
+
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-white">{p.cs}</p>
+                                  <p className="text-xs text-slate-400">CS</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Red Side Team */}
+                        <div>
+                          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                            <span className="text-red-400">RED SIDE</span>
+                            {!weAreBlue && <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded">Unser Team</span>}
+                          </h3>
+                          <div className="space-y-2">
+                            {redTeam.map((p, idx) => (
+                              <div
+                                key={`${match.match_id}-enemy-${idx}`}
+                                className="flex items-center gap-4 p-3 rounded-lg bg-slate-800/50"
+                              >
+                                <div className="w-12 h-12 rounded-lg overflow-hidden">
+                                  <img
+                                    src={p.champion_icon}
+                                    alt={p.champion_name}
+                                    className="w-full h-full object-cover scale-110"
+                                    onError={(e) => e.target.style.display = 'none'}
+                                  />
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-white truncate">
+                                    {p.summoner_name}
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    {displayRole(p.role)}
+                                  </p>
+                                </div>
+
+                                <div className="flex gap-1">
+                                  {filterEmptyItems(p.items).map((itemId, itemIdx) => (
+                                    <div key={itemIdx} className="w-8 h-8 rounded overflow-hidden bg-slate-700/50">
+                                      <img
+                                        src={getItemIconUrl(itemId, match.game_version)}
+                                        alt={`Item ${itemId}`}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => handleItemError(e, itemId)}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-white">
+                                    {p.kills}/{p.deaths}/{p.assists}
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    {p.deaths === 0
+                                      ? 'Perfect'
+                                      : ((p.kills + p.assists) / p.deaths).toFixed(2)}{' '}
+                                    KDA
+                                  </p>
+                                </div>
+
+                                <div className="text-center">
+                                  <p className="text-sm font-semibold text-white">{p.cs}</p>
+                                  <p className="text-xs text-slate-400">CS</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {matches.length > 0 && matches.length % 20 === 0 && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={loadMoreMatches}
+                disabled={loadingMore}
+                className="px-6 py-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loadingMore ? 'Lädt...' : 'Mehr laden'}
+              </button>
             </div>
           )}
         </div>

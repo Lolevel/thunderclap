@@ -461,6 +461,15 @@ class MatchFetcher:
             turret_kills=participant_data.get('turretKills', 0),
             inhibitor_kills=participant_data.get('inhibitorKills', 0),
 
+            # Items (final build)
+            item0=participant_data.get('item0'),
+            item1=participant_data.get('item1'),
+            item2=participant_data.get('item2'),
+            item3=participant_data.get('item3'),
+            item4=participant_data.get('item4'),
+            item5=participant_data.get('item5'),
+            item6=participant_data.get('item6'),
+
             # Result
             win=participant_data.get('win', False)
         )
