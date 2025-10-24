@@ -238,6 +238,12 @@ Only fetches timeline data for last 10 tournament games per team to respect API 
 - **Display**: Top, Jungle, Mid, Bot, Support
 - **Storage**: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot's internal values)
 
+## Access Token erstellen
+
+```bash
+docker exec pl_scout_backend python create_token.py --name "Production Admin" --days 365
+```
+
 ## Documentation
 
 - [CLAUDE.md](CLAUDE.md) - Development guide for AI assistants
