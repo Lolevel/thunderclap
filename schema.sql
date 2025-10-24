@@ -381,6 +381,22 @@ CREATE TABLE scouting_reports (
 );
 
 -- ============================================================
+-- AUTHENTICATION TABLES
+-- ============================================================
+
+CREATE TABLE access_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token VARCHAR(64) UNIQUE NOT NULL,
+    name VARCHAR(100),
+    expires_at TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMP,
+    use_count INTEGER DEFAULT 0
+);
+
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 
