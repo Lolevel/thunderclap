@@ -95,7 +95,7 @@ const Navbar = () => {
 						<img
 							src="/thunderclap-logo.png"
 							alt="Thunderclap Logo"
-							className="w-8 h-8 object-cover scale-150"
+							className="w-8 h-8 object-cover scale-120 rounded-md"
 						/>
 						<h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
 							Thunderclap
