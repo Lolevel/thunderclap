@@ -9,13 +9,15 @@ import {
 	RefreshCw,
 	History,
 	Trash2,
+	Clipboard,
 } from 'lucide-react';
 import api from '../config/api';
 import TeamOverviewTab from '../components/TeamOverviewTab';
-import DraftAnalysisTab from '../components/DraftAnalysisTab';
-import ScoutingReportTab from '../components/ScoutingReportTab';
+import ChampionPoolTab from '../components/ChampionPoolTab';
+import InDepthStatsTab from '../components/InDepthStatsTab';
 import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
+import GamePrepTab from '../components/GamePrepTab';
 import RefreshProgressModal from '../components/RefreshProgressModal';
 import { useToast } from '../components/ToastContainer';
 
@@ -33,9 +35,11 @@ const TeamDetail = () => {
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
+	const [predictions, setPredictions] = useState(null);
 
 	useEffect(() => {
 		fetchTeamData();
+		fetchPredictions();
 	}, [id]);
 
 	const fetchTeamData = async () => {
@@ -51,6 +55,15 @@ const TeamDetail = () => {
 			console.error('Failed to fetch team data:', error);
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const fetchPredictions = async () => {
+		try {
+			const response = await api.get(`/teams/${id}/roster/predictions`);
+			setPredictions(response.data.predictions);
+		} catch (error) {
+			console.error('Failed to fetch predictions:', error);
 		}
 	};
 
@@ -198,11 +211,16 @@ const TeamDetail = () => {
 							},
 							{ id: 'players', label: 'Spieler', icon: Users },
 							{ id: 'matches', label: 'Match History', icon: History },
-							{ id: 'drafts', label: 'Draft Analyse', icon: Target },
+							{ id: 'drafts', label: 'Champion Pool', icon: Target },
 							{
 								id: 'report',
-								label: 'Scouting Report',
+								label: 'In-Depth Stats',
 								icon: FileText,
+							},
+							{
+								id: 'gameprep',
+								label: 'Game Prep',
+								icon: Clipboard,
 							},
 						].map((tab) => {
 							const Icon = tab.icon;
@@ -234,6 +252,7 @@ const TeamDetail = () => {
 						<PlayersTab
 							roster={roster}
 							teamId={id}
+							predictions={predictions}
 							onRefresh={fetchTeamData}
 							onRemovePlayer={handleRemovePlayer}
 							onAddPlayer={handleAddPlayer}
@@ -243,9 +262,15 @@ const TeamDetail = () => {
 
 					{activeTab === 'matches' && <MatchHistoryTab teamId={id} />}
 
-					{activeTab === 'drafts' && <DraftAnalysisTab teamId={id} />}
+					{activeTab === 'drafts' && <ChampionPoolTab teamId={id} predictions={predictions} />}
 
-					{activeTab === 'report' && <ScoutingReportTab teamId={id} />}
+					{activeTab === 'report' && <InDepthStatsTab teamId={id} />}
+
+					{activeTab === 'gameprep' && (
+						<GamePrepTab
+							teamId={id}
+						/>
+					)}
 				</div>
 
 				{/* Progress Modal */}

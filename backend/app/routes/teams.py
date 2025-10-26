@@ -4,7 +4,7 @@ Team routes
 
 from flask import Blueprint, request, jsonify, current_app
 from app import db
-from app.models import Team, TeamRoster, Player
+from app.models import Team, TeamRoster, Player, DraftScenario
 from app.services import RiotAPIClient, MatchFetcher
 from app.utils import parse_opgg_url
 from app.middleware.auth import require_auth
@@ -944,6 +944,43 @@ def add_player_to_roster(team_id):
         return jsonify({"error": f"Failed to add player: {str(e)}"}), 500
 
 
+@bp.route("/<team_id>/roster/predictions", methods=["GET"])
+def get_roster_predictions(team_id):
+    """
+    Get predicted lineup(s) for the team
+
+    Returns:
+        {
+            "predictions": [
+                {
+                    "variant_rank": 1,
+                    "predicted_lineup": {
+                        "TOP": {"player_id": "...", "player_name": "...", "confidence": 95.2},
+                        ...
+                    },
+                    "overall_confidence": 89.5
+                },
+                ...
+            ]
+        }
+    """
+    from app.services.lineup_predictor import LineupPredictor
+
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+
+    try:
+        predictor = LineupPredictor()
+        predictions = predictor.predict_multiple_lineups(team, max_variants=3)
+
+        return jsonify({"predictions": predictions}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to predict lineups: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to predict lineups: {str(e)}"}), 500
+
+
 @bp.route("/<team_id>/sync-from-opgg", methods=["POST"])
 def sync_roster_from_opgg(team_id):
     """
@@ -1118,3 +1155,343 @@ def sync_roster_from_opgg(team_id):
         db.session.rollback()
         current_app.logger.error(f"Failed to sync roster: {str(e)}", exc_info=True)
         return jsonify({"error": f"Failed to sync roster: {str(e)}"}), 500
+
+
+
+# ============================================================
+# DRAFT SCENARIOS ROUTES (New system)
+# ============================================================
+
+@bp.route("/<team_id>/draft-scenarios", methods=["GET"])
+def get_draft_scenarios(team_id):
+    """
+    Get all draft scenarios for a team, grouped by side
+    If roster is locked, only return scenarios matching the locked roster
+
+    Returns:
+        {
+            "blue_scenarios": [...],
+            "red_scenarios": [...],
+            "locked_roster": [...] or null
+        }
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        # Get all active scenarios for this team
+        scenarios = DraftScenario.query.filter_by(
+            team_id=team_id,
+            is_active=True
+        ).order_by(DraftScenario.side, DraftScenario.display_order).all()
+
+        # Filter by locked roster if set
+        if team.locked_roster:
+            locked_roster_ids = {p['player_id'] for p in team.locked_roster}
+            scenarios = [
+                s for s in scenarios
+                if s.roster and {p['player_id'] for p in s.roster} == locked_roster_ids
+            ]
+
+        # Group by side
+        blue_scenarios = [s.to_dict() for s in scenarios if s.side == 'blue']
+        red_scenarios = [s.to_dict() for s in scenarios if s.side == 'red']
+
+        return jsonify({
+            "blue_scenarios": blue_scenarios,
+            "red_scenarios": red_scenarios,
+            "locked_roster": team.locked_roster
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to get draft scenarios: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to get draft scenarios: {str(e)}"}), 500
+
+
+@bp.route("/<team_id>/draft-scenarios", methods=["POST"])
+def create_draft_scenario(team_id):
+    """
+    Create a new draft scenario
+
+    Request body:
+        {
+            "scenario_name": "Scenario 1",
+            "side": "blue" | "red",
+            "roster": [{"player_id": "...", "summoner_name": "...", "role": "TOP"}, ...],
+            "bans": ["", "", "", "", ""],
+            "picks": ["", "", "", "", ""],
+            "notes": ""
+        }
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        data = request.get_json()
+        if not data or 'side' not in data:
+            return jsonify({"error": "side is required"}), 400
+
+        # Get max display order for this side
+        max_order = db.session.query(db.func.max(DraftScenario.display_order)).filter_by(
+            team_id=team_id,
+            side=data['side']
+        ).scalar() or 0
+
+        scenario = DraftScenario(
+            team_id=team_id,
+            scenario_name=data.get('scenario_name', f"Scenario {max_order + 1}"),
+            side=data['side'],
+            roster=data.get('roster', []),
+            bans=data.get('bans', ['', '', '', '', '']),
+            picks=data.get('picks', ['', '', '', '', '']),
+            notes=data.get('notes', ''),
+            display_order=max_order + 1
+        )
+
+        db.session.add(scenario)
+        db.session.commit()
+
+        current_app.logger.info(f"Created draft scenario for team {team.name}")
+
+        return jsonify(scenario.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to create draft scenario: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to create draft scenario: {str(e)}"}), 500
+
+
+@bp.route("/<team_id>/draft-scenarios/<scenario_id>", methods=["PUT"])
+def update_draft_scenario(team_id, scenario_id):
+    """
+    Update a draft scenario
+
+    Request body:
+        {
+            "scenario_name": "...",
+            "roster": [...],
+            "bans": [...],
+            "picks": [...],
+            "notes": "..."
+        }
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        scenario = DraftScenario.query.get(scenario_id)
+        if not scenario or str(scenario.team_id) != team_id:
+            return jsonify({"error": "Draft scenario not found"}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Request body is required"}), 400
+
+        # Update fields
+        if 'scenario_name' in data:
+            scenario.scenario_name = data['scenario_name']
+        if 'roster' in data:
+            scenario.roster = data['roster']
+        if 'bans' in data:
+            scenario.bans = data['bans']
+        if 'picks' in data:
+            scenario.picks = data['picks']
+        if 'notes' in data:
+            scenario.notes = data['notes']
+
+        scenario.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        current_app.logger.info(f"Updated draft scenario {scenario_id} for team {team.name}")
+
+        return jsonify(scenario.to_dict()), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to update draft scenario: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to update draft scenario: {str(e)}"}), 500
+
+
+@bp.route("/<team_id>/draft-scenarios/<scenario_id>", methods=["DELETE"])
+def delete_draft_scenario(team_id, scenario_id):
+    """
+    Delete a draft scenario
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        scenario = DraftScenario.query.get(scenario_id)
+        if not scenario or str(scenario.team_id) != team_id:
+            return jsonify({"error": "Draft scenario not found"}), 404
+
+        db.session.delete(scenario)
+        db.session.commit()
+
+        current_app.logger.info(f"Deleted draft scenario {scenario_id} for team {team.name}")
+
+        return jsonify({"message": "Draft scenario deleted successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to delete draft scenario: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to delete draft scenario: {str(e)}"}), 500
+
+
+# ============================================================
+# ROSTER LOCK ROUTES
+# ============================================================
+
+@bp.route("/<team_id>/roster/lock", methods=["POST"])
+def lock_roster(team_id):
+    """
+    Lock a roster for draft prep
+    When locked, only scenarios with this roster will be shown
+
+    Request body:
+        {
+            "roster": [
+                {"player_id": "...", "summoner_name": "...", "role": "TOP"},
+                ...
+            ]
+        }
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        data = request.get_json()
+        if not data or 'roster' not in data:
+            return jsonify({"error": "roster is required"}), 400
+
+        roster = data['roster']
+        if not isinstance(roster, list) or len(roster) != 5:
+            return jsonify({"error": "roster must be an array of 5 players"}), 400
+
+        team.locked_roster = roster
+        team.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        current_app.logger.info(f"Locked roster for team {team.name}")
+
+        return jsonify({
+            "message": "Roster locked successfully",
+            "locked_roster": roster
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to lock roster: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to lock roster: {str(e)}"}), 500
+
+
+@bp.route("/<team_id>/roster/lock", methods=["DELETE"])
+def unlock_roster(team_id):
+    """
+    Unlock the roster for draft prep
+    All scenarios will be shown again
+    """
+    try:
+        team = Team.query.get(team_id)
+        if not team:
+            return jsonify({"error": "Team not found"}), 404
+
+        team.locked_roster = None
+        team.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        current_app.logger.info(f"Unlocked roster for team {team.name}")
+
+        return jsonify({
+            "message": "Roster unlocked successfully"
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to unlock roster: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Failed to unlock roster: {str(e)}"}), 500
+
+
+# ============================================================
+# TEMPORARY COMPATIBILITY ROUTES (to prevent frontend crashes)
+# ============================================================
+
+@bp.route("/<team_id>/game-prep", methods=["GET", "OPTIONS"])
+def get_game_prep_compat(team_id):
+    """
+    Temporary compatibility endpoint - returns empty data
+    Frontend needs to be updated to use /draft-scenarios
+    """
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+    
+    return jsonify({
+        "team_id": team_id,
+        "message": "This endpoint is deprecated. Use /draft-scenarios instead",
+        "bans": ["", "", "", "", ""],
+        "picks": ["", "", "", "", ""],
+        "notes": ""
+    }), 200
+
+
+@bp.route("/<team_id>/game-prep", methods=["POST"])
+def save_game_prep_compat(team_id):
+    """
+    Temporary compatibility endpoint - does nothing
+    Frontend needs to be updated to use /draft-scenarios
+    """
+    return jsonify({
+        "message": "This endpoint is deprecated. Use /draft-scenarios instead"
+    }), 200
+
+@bp.route("/<team_id>/champions/autocomplete", methods=["GET"])
+def autocomplete_champions(team_id):
+    """
+    Get champion suggestions for autocomplete
+    
+    Query params:
+        q: search query (champion name)
+        limit: max results (default 10)
+    
+    Returns:
+        [{
+            "id": champion_id,
+            "name": "Champion Name",
+            "icon": "http://..."
+        }]
+    """
+    from app.models import Champion
+    
+    try:
+        query = request.args.get('q', '').strip()
+        limit = int(request.args.get('limit', 10))
+        
+        if not query or len(query) < 2:
+            return jsonify([]), 200
+        
+        # Search champions by name (exclude Doom Bots and other special game mode champions)
+        champions = Champion.query.filter(
+            Champion.name.ilike(f'%{query}%'),
+            Champion.id < 1000  # Normal champions only (excludes Doom Bots, etc.)
+        ).order_by(Champion.name).limit(limit).all()
+        
+        results = [
+            {
+                'id': champ.id,
+                'name': champ.name,
+                'icon': champ.icon_url or f'https://ddragon.leagueoflegends.com/cdn/14.1.1/img/champion/{champ.name}.png'
+            }
+            for champ in champions
+        ]
+        
+        return jsonify(results), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Failed to autocomplete champions: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500

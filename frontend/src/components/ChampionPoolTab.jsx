@@ -4,7 +4,7 @@ import api from '../config/api';
 import { displayRole } from '../utils/roleMapping';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
-const DraftAnalysisTab = ({ teamId }) => {
+const ChampionPoolTab = ({ teamId, predictions }) => {
 	const [draftData, setDraftData] = useState(null);
 	const [playerPools, setPlayerPools] = useState(null);
 	const [loading, setLoading] = useState(true);
@@ -38,8 +38,8 @@ const DraftAnalysisTab = ({ teamId }) => {
 			const response = await api.get(`/teams/${teamId}/draft-analysis`);
 			setDraftData(response.data);
 		} catch (err) {
-			console.error('Failed to fetch draft analysis:', err);
-			setError('Failed to load draft analysis');
+			console.error('Failed to fetch champion pool:', err);
+			setError('Failed to load champion pool');
 		} finally {
 			setLoading(false);
 		}
@@ -58,7 +58,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<div className="animate-pulse text-text-muted">
-					Loading Draft Analysis...
+					Loading Champion Pool...
 				</div>
 			</div>
 		);
@@ -90,7 +90,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 				<div className="flex items-center justify-between">
 					<div>
 						<h2 className="text-xl font-bold text-text-primary mb-1">
-							Draft Analysis
+							Champion Pool & Draft Patterns
 						</h2>
 						<p className="text-text-secondary">
 							Based on {matches_analyzed} matches analyzed
@@ -189,6 +189,9 @@ const DraftAnalysisTab = ({ teamId }) => {
 										Picks
 									</th>
 									<th className="text-center py-2 px-3 text-text-muted font-medium">
+										Bans
+									</th>
+									<th className="text-center py-2 px-3 text-text-muted font-medium">
 										W-L
 									</th>
 									<th className="text-center py-2 px-3 text-text-muted font-medium">
@@ -246,6 +249,9 @@ const DraftAnalysisTab = ({ teamId }) => {
 													<td className="py-3 px-3 text-center font-medium text-text-primary">
 														{champ.picks}
 													</td>
+													<td className="py-3 px-3 text-center font-medium text-error/80">
+														{champ.picks >= 1 && champ.bans_against ? champ.bans_against : '-'}
+													</td>
 													<td className="py-3 px-3 text-center text-text-secondary">
 														{champ.wins}-{champ.losses}
 													</td>
@@ -264,7 +270,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 												{/* Expanded Player Details */}
 												{hasMultiplePlayers && isExpanded && (
 													<tr className="bg-surface-lighter/50">
-														<td colSpan="5" className="px-3 py-4">
+														<td colSpan="6" className="px-3 py-4">
 															<div className="ml-8 space-y-2">
 																<p className="text-xs font-semibold text-text-muted uppercase mb-3">
 																	Player Details
@@ -762,9 +768,63 @@ const DraftAnalysisTab = ({ teamId }) => {
 					) : (
 						/* Comparison View - Players Side by Side */
 						<div className="overflow-x-auto pb-2">
-							<div className="flex gap-6 min-w-max pt-2">
-								{playerPools.players.map((player) => (
-									<div key={player.player_id} className="flex-1 min-w-[300px] max-w-[340px]">
+							<div className="flex gap-3 pt-2" style={{ width: 'fit-content', minWidth: '100%' }}>
+								{(() => {
+									// Sort players: first 5 from predicted lineup, then rest by role
+									const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+									let sortedPlayers = [...playerPools.players];
+
+									// If we have predictions, sort first 5 by predicted lineup
+									if (predictions && predictions.length > 0 && predictions[0].predicted_lineup) {
+										const predictedLineup = predictions[0].predicted_lineup;
+										const predictedPlayerIds = roleOrder.map(role =>
+											predictedLineup[role]?.player_id
+										).filter(id => id);
+
+										// Separate predicted and non-predicted players
+										const predictedPlayers = [];
+										const otherPlayers = [];
+
+										sortedPlayers.forEach(player => {
+											if (predictedPlayerIds.includes(player.player_id)) {
+												predictedPlayers.push(player);
+											} else {
+												otherPlayers.push(player);
+											}
+										});
+
+										// Sort predicted players by role order
+										predictedPlayers.sort((a, b) => {
+											const aIndex = roleOrder.indexOf(a.role);
+											const bIndex = roleOrder.indexOf(b.role);
+											return aIndex - bIndex;
+										});
+
+										// Sort other players by role
+										otherPlayers.sort((a, b) => {
+											const aIndex = roleOrder.indexOf(a.role);
+											const bIndex = roleOrder.indexOf(b.role);
+											return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+										});
+
+										sortedPlayers = [...predictedPlayers, ...otherPlayers];
+									} else {
+										// No predictions: sort by role
+										sortedPlayers.sort((a, b) => {
+											const aIndex = roleOrder.indexOf(a.role);
+											const bIndex = roleOrder.indexOf(b.role);
+											return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+										});
+									}
+
+									return sortedPlayers.map((player, idx) => (
+									<div
+										key={player.player_id}
+										className="flex-shrink-0"
+										style={{
+											width: '234px',
+											minWidth: '234px'
+										}}>
 										{/* Player Header */}
 										<div className="sticky top-0 bg-slate-700/50 backdrop-blur rounded-t-xl p-4 border border-slate-600/50 border-b-0">
 											<div className="flex items-center gap-3 mb-2">
@@ -796,9 +856,9 @@ const DraftAnalysisTab = ({ teamId }) => {
 										</div>
 
 										{/* Champion List */}
-										<div className="bg-slate-800/40 rounded-b-xl border border-slate-600/50 border-t-0 max-h-[700px] overflow-y-auto pr-2">
+										<div className="bg-slate-800/40 rounded-b-xl border border-slate-600/50 border-t-0 max-h-[700px] overflow-y-auto">
 											{player.champions && player.champions.length > 0 ? (
-												<div className="divide-y divide-border/30 p-2">
+												<div className="divide-y divide-border/30 p-2 pr-1">
 													{player.champions.map((champ) => (
 														<div
 															key={`${player.player_id}-${champ.champion_id}`}
@@ -851,7 +911,8 @@ const DraftAnalysisTab = ({ teamId }) => {
 											)}
 										</div>
 									</div>
-								))}
+									));
+								})()}
 							</div>
 						</div>
 					)}
@@ -861,4 +922,4 @@ const DraftAnalysisTab = ({ teamId }) => {
 	);
 };
 
-export default DraftAnalysisTab;
+export default ChampionPoolTab;

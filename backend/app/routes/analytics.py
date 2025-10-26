@@ -1,5 +1,5 @@
 """
-Analytics routes - Team Overview, Draft Analysis, Scouting Reports
+Analytics routes - Team Overview, Champion Pool & Draft Patterns, In-Depth Statistics
 NEW endpoints for enhanced team analysis
 """
 
@@ -176,7 +176,7 @@ def get_team_overview(team_id):
 @bp.route("/teams/<team_id>/draft-analysis", methods=["GET"])
 def get_draft_analysis(team_id):
     """
-    Get comprehensive draft analysis
+    Get champion pool and draft pattern analysis
 
     Query params:
         - days: Days to analyze (default: 90)
@@ -184,8 +184,8 @@ def get_draft_analysis(team_id):
     Returns:
         {
             "team_champion_pool": [...],
-            "favorite_bans": {rotation_1: [...], rotation_2: [...], rotation_3: [...]},
-            "bans_against": {...},
+            "favorite_bans": {phase_1: [...], phase_2: [...]},
+            "bans_against": {phase_1: [...], phase_2: [...]},
             "first_pick_priority": [...],
             "side_performance": {blue: {...}, red: {...}}
         }
@@ -246,8 +246,8 @@ def get_draft_analysis(team_id):
         return jsonify(analysis), 200
 
     except Exception as e:
-        current_app.logger.error(f"Error getting draft analysis: {str(e)}")
-        return jsonify({"error": "Failed to get draft analysis", "details": str(e)}), 500
+        current_app.logger.error(f"Error getting champion pool analysis: {str(e)}")
+        return jsonify({"error": "Failed to get champion pool analysis", "details": str(e)}), 500
 
 
 @bp.route("/teams/<team_id>/player-champion-pools", methods=["GET"])
@@ -357,7 +357,7 @@ def get_team_player_champion_pools(team_id):
 @bp.route("/teams/<team_id>/scouting-report", methods=["GET"])
 def get_scouting_report(team_id):
     """
-    Get detailed scouting report
+    Get detailed in-depth statistics and performance metrics
 
     Query params:
         - days: Days to analyze (default: 90)
@@ -417,8 +417,8 @@ def get_scouting_report(team_id):
         return jsonify(report), 200
 
     except Exception as e:
-        current_app.logger.error(f"Error getting scouting report: {str(e)}")
-        return jsonify({"error": "Failed to get scouting report", "details": str(e)}), 500
+        current_app.logger.error(f"Error getting in-depth statistics: {str(e)}")
+        return jsonify({"error": "Failed to get in-depth statistics", "details": str(e)}), 500
 
 
 @bp.route("/players/<player_id>/champions/tournament", methods=["GET"])

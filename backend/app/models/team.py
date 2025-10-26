@@ -3,7 +3,7 @@ Team-related models
 """
 from datetime import datetime
 from app import db
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 import uuid
 
 
@@ -19,6 +19,11 @@ class Team(db.Model):
     division = db.Column(db.String(50))
     current_split = db.Column(db.String(20))
     logo_url = db.Column(db.Text)
+
+    # Locked roster for draft prep (NULL if not locked)
+    # Array of 5 player objects: [{"player_id": "uuid", "summoner_name": "Name", "role": "TOP"}, ...]
+    locked_roster = db.Column(JSONB)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -70,6 +75,7 @@ class Team(db.Model):
             'division': self.division,
             'current_split': self.current_split,
             'logo_url': self.logo_url,
+            'locked_roster': self.locked_roster,
             'average_rank': avg_rank['display'] if avg_rank else None,
             'average_rank_icon': avg_rank['icon_url'] if avg_rank else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,

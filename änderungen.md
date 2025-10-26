@@ -1,3 +1,10 @@
-- die champ icons in der match history sind gut so, aber sollen noch einen festen bereich bekommen. also wenn mehrere games untereinander angezeigt werden, dann sollen die champion icons immer aligned sein. einfach weiter rechts. generell find ich es besser wenn feste breiten angegeben sind, dass sieg niederlage künstlich auf die gleiche breite gezogen werden und alle daten immer einen festen platz haben
+ein paar bugs gibts noch. beim ersten laden ist das roster wieder korrekt, aber die icons nicht der user. wenn man dann einen auswählt oder load predicted nutzt
+stimmen die icons. und des dropdown von der playerauswahl ist immer noch nicht über dem rest. schau dir die komponente mal an. ich glaube es gibt noch ein problem mit
+mehreren rostern und den scenarien. kann es sein, dass die verschiedenen roster nicht gespeichert werden und dann manchmal gelöscht werden? es soll alles permanent
+bleiben bis lock oder löschung
 
-- in der draft analyse sollen die bans angepasst werden. es soll nebeneinander gezeigt werden, was die top 5 lieblingsbans der ersten rotation sind und daneben die top 5 lieblingsbans der gegner gegen sie in der ersten rotation. dann darunter das gleiche mit der 2. rotation. und man soll es aufklappen können, damit man nicht nur top 5 pro phase sieht, sondern dann alle.
+außerdem soll die logik so sein, dass ein roster erst als ganzes gespeichert wird, wenn auch 5 spieler drinne sind und dann halt wieder autosave.
+
+nimm dir random ingame namen von jungle monstern wie krug oder raptors um die rosters zu benennen. einfach als einfachere orientierung
+
+und achte immer darauf, dass bei model änderungen auch das schema angepasst wird

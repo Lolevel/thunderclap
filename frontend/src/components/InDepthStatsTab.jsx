@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Clock, Swords, Shield, Target, TrendingUp } from 'lucide-react';
 import api from '../config/api';
 
-const ScoutingReportTab = ({ teamId }) => {
+const InDepthStatsTab = ({ teamId }) => {
 	const [report, setReport] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
@@ -17,8 +17,8 @@ const ScoutingReportTab = ({ teamId }) => {
 			const response = await api.get(`/teams/${teamId}/scouting-report`);
 			setReport(response.data);
 		} catch (err) {
-			console.error('Failed to fetch scouting report:', err);
-			setError('Fehler beim Laden des Scouting Reports');
+			console.error('Failed to fetch in-depth stats:', err);
+			setError('Failed to load in-depth statistics');
 		} finally {
 			setLoading(false);
 		}
@@ -35,7 +35,7 @@ const ScoutingReportTab = ({ teamId }) => {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<div className="animate-pulse text-text-muted">
-					Lädt Scouting Report...
+					Loading In-Depth Stats...
 				</div>
 			</div>
 		);
@@ -44,7 +44,7 @@ const ScoutingReportTab = ({ teamId }) => {
 	if (error || !report) {
 		return (
 			<div className="card text-center py-12">
-				<p className="text-text-secondary">{error || 'Keine Daten verfügbar'}</p>
+				<p className="text-text-secondary">{error || 'No data available'}</p>
 			</div>
 		);
 	}
@@ -68,7 +68,7 @@ const ScoutingReportTab = ({ teamId }) => {
 					Keine Spiele gefunden
 				</h3>
 				<p className="text-text-secondary">
-					Bitte lade zuerst Spieldaten für dieses Team, um einen Scouting Report zu erstellen.
+					Bitte lade zuerst Spieldaten für dieses Team, um Statistiken zu erstellen.
 				</p>
 			</div>
 		);
@@ -82,7 +82,7 @@ const ScoutingReportTab = ({ teamId }) => {
 					<FileText className="w-12 h-12 text-accent" />
 					<div>
 						<h2 className="text-xl font-bold text-text-primary mb-1">
-							Scouting Report
+							In Depth Info
 						</h2>
 						<p className="text-text-secondary">
 							Detaillierte Spielstatistiken basierend auf {total_games} Spielen
@@ -301,4 +301,4 @@ const ScoutingReportTab = ({ teamId }) => {
 	);
 };
 
-export default ScoutingReportTab;
+export default InDepthStatsTab;

@@ -171,6 +171,8 @@ class DraftAnalyzer:
         # Sort by picks descending
         team_champion_pool.sort(key=lambda x: x['picks'], reverse=True)
 
+        # We'll add ban counts later after computing favorite_bans
+
         # Side performance
         side_performance = {
             'blue': {
@@ -297,6 +299,12 @@ class DraftAnalyzer:
                 'first_herald_rate': round((first_herald_count / games_count) * 100, 1) if games_count > 0 else 0
             }
         }
+
+        # Add ban counts AGAINST team to team_champion_pool
+        for champ in team_champion_pool:
+            champ_id = champ['champion_id']
+            total_bans_against = bans_against_phase1.get(champ_id, 0) + bans_against_phase2.get(champ_id, 0)
+            champ['bans_against'] = total_bans_against
 
         result = {
             "team_id": str(team.id),

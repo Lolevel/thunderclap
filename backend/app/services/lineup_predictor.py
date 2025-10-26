@@ -17,15 +17,16 @@ from app.models import (
 class LineupPredictor:
     """
     Service for predicting team lineups
-    Uses 50/30/18/2 weighting algorithm
+    Uses 65/35 weighting algorithm (tournament games + role coverage)
+    No API calls required - only uses existing DB data
     """
 
     # Prediction weights (from project spec)
     WEIGHTS = {
-        'recent_tournament_games': 0.50,  # Tournament history (HIGHEST)
-        'role_coverage': 0.30,            # Role distribution
-        'solo_queue_activity': 0.18,      # Recent activity
-        'performance_rating': 0.02        # Performance (benching rare)
+        'recent_tournament_games': 0.65,  # Tournament history (HIGHEST)
+        'role_coverage': 0.35,            # Role distribution
+        'solo_queue_activity': 0.00,      # Removed - not needed (no API calls)
+        'performance_rating': 0.00        # Removed - not used
     }
 
     ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
@@ -112,6 +113,137 @@ class LineupPredictor:
 
         return result
 
+    def predict_multiple_lineups(self, team: Team, match_date: Optional[datetime] = None, max_variants: int = 3) -> List[Dict]:
+        """
+        Predict multiple possible lineups (alternatives)
+
+        Args:
+            team: Team model instance
+            match_date: Date of match (default: today)
+            max_variants: Maximum number of lineup variants to return
+
+        Returns:
+            List of lineup predictions, ordered by confidence
+        """
+        current_app.logger.info(f'Predicting multiple lineups for {team.name}')
+
+        match_date = match_date or datetime.utcnow()
+
+        # Get eligible players
+        eligible_players = self._get_eligible_players(team)
+
+        if not eligible_players:
+            return []
+
+        # Calculate scores for each player-role combination
+        player_role_scores = self._calculate_player_role_scores(
+            eligible_players,
+            team,
+            match_date
+        )
+
+        # Generate multiple lineup variants
+        variants = []
+
+        # Variant 1: Best overall lineup (greedy)
+        best_lineup = self._select_best_lineup(player_role_scores)
+        if best_lineup:
+            confidence = self._calculate_lineup_confidence(team, best_lineup, player_role_scores)
+            variants.append({
+                'lineup': best_lineup,
+                'confidence': confidence,
+                'method': 'best_overall'
+            })
+
+        # Variant 2: Alternative with second-best players for uncertain roles
+        alternative_lineup = self._select_alternative_lineup(player_role_scores, best_lineup)
+        if alternative_lineup:
+            # Check if alternative is identical to best lineup
+            is_identical = all(
+                best_lineup.get(role, (None, None))[0] == alternative_lineup.get(role, (None, None))[0]
+                for role in self.ROLES
+            )
+
+            if not is_identical:
+                confidence = self._calculate_lineup_confidence(team, alternative_lineup, player_role_scores)
+                variants.append({
+                    'lineup': alternative_lineup,
+                    'confidence': confidence,
+                    'method': 'alternative'
+                })
+
+        # Sort by confidence
+        variants.sort(key=lambda x: x['confidence'], reverse=True)
+
+        # If only one variant, cap confidence at 99%
+        if len(variants) == 1:
+            variants[0]['confidence'] = min(variants[0]['confidence'], 0.99)
+
+        # Build results
+        results = []
+        for idx, variant in enumerate(variants[:max_variants]):
+            lineup = variant['lineup']
+            result = {
+                'team_id': str(team.id),
+                'team_name': team.name,
+                'variant_rank': idx + 1,
+                'match_date': match_date.isoformat(),
+                'predicted_lineup': {
+                    role: {
+                        'player_id': str(player_id),
+                        'player_name': Player.query.get(player_id).summoner_name,
+                        'confidence': round(confidence * 100, 2),
+                        'role': role
+                    }
+                    for role, (player_id, confidence) in lineup.items()
+                },
+                'overall_confidence': round(variant['confidence'] * 100, 2),
+                'prediction_method': variant['method']
+            }
+            results.append(result)
+
+        return results
+
+    def _select_alternative_lineup(self, player_role_scores: Dict, primary_lineup: Dict) -> Optional[Dict]:
+        """
+        Select an alternative lineup by picking second-best options for roles with close scores
+        """
+        lineup = {}
+        used_players = set()
+
+        # Identify roles with competitive alternatives (close scores)
+        for role in self.ROLES:
+            # Get top 2 players for this role
+            candidates = []
+            for player_id, role_scores in player_role_scores.items():
+                score = role_scores.get(role, 0)
+                candidates.append((player_id, score))
+
+            candidates.sort(key=lambda x: x[1], reverse=True)
+
+            # If we have at least 2 candidates and the difference is < 0.2, consider alternative
+            if len(candidates) >= 2 and (candidates[0][1] - candidates[1][1]) < 0.2:
+                # Use second best if primary lineup used the first
+                primary_player_id = primary_lineup.get(role, (None, None))[0]
+                if primary_player_id == candidates[0][0]:
+                    # Try second best
+                    second_best = candidates[1][0]
+                    if second_best not in used_players:
+                        lineup[role] = (second_best, candidates[1][1])
+                        used_players.add(second_best)
+                        continue
+
+            # Otherwise use best available
+            for player_id, score in candidates:
+                if player_id not in used_players:
+                    lineup[role] = (player_id, score)
+                    used_players.add(player_id)
+                    break
+
+        if len(lineup) == len(self.ROLES):
+            return lineup
+        return None
+
     def save_prediction(self, team: Team, prediction_result: Dict) -> LineupPrediction:
         """
         Save prediction to database
@@ -180,15 +312,11 @@ class LineupPredictor:
                 # Calculate weighted score
                 tournament_score = self._tournament_games_score(player, team, role)
                 role_coverage_score = self._role_coverage_score(player, role)
-                activity_score = self._solo_queue_activity_score(player)
-                performance_score = self._performance_rating_score(player, role)
 
-                # Weighted sum
+                # Weighted sum (solo queue activity and performance rating removed)
                 total_score = (
                     tournament_score * self.WEIGHTS['recent_tournament_games'] +
-                    role_coverage_score * self.WEIGHTS['role_coverage'] +
-                    activity_score * self.WEIGHTS['solo_queue_activity'] +
-                    performance_score * self.WEIGHTS['performance_rating']
+                    role_coverage_score * self.WEIGHTS['role_coverage']
                 )
 
                 player_scores[role] = total_score
@@ -199,35 +327,42 @@ class LineupPredictor:
 
     def _tournament_games_score(self, player: Player, team: Team, role: str) -> float:
         """
-        Score based on recent tournament games
-        Weight: 50%
+        Score based on recent tournament games with strong recency bias
+        Weight: 65%
+        More recent games count significantly more (exponential decay)
         """
-        # Get last 10 tournament games for this team
+        # Get last 30 tournament games for this team (increased from 15)
         recent_tournament_games = Match.query.filter(
             Match.is_tournament_game == True,
             db.or_(
                 Match.winning_team_id == team.id,
                 Match.losing_team_id == team.id
             )
-        ).order_by(Match.game_creation.desc()).limit(10).all()
+        ).order_by(Match.game_creation.desc()).limit(30).all()
 
         if not recent_tournament_games:
             return 0.0
 
-        # Count how many times player played this role
-        role_appearances = 0
+        # Calculate weighted score with strong recency bias
+        total_weight = 0
+        weighted_appearances = 0
 
-        for match in recent_tournament_games:
+        for idx, match in enumerate(recent_tournament_games):
+            # Strong exponential decay: most recent game has weight 1.0, oldest ~0.1
+            # Decay factor 0.78 (stronger than previous 0.85)
+            recency_weight = 1.0 * (0.78 ** idx)
+            total_weight += recency_weight
+
             participant = MatchParticipant.query.filter_by(
                 match_id=match.id,
                 player_id=player.id
             ).first()
 
             if participant and participant.team_position == role:
-                role_appearances += 1
+                weighted_appearances += recency_weight
 
-        # Score = percentage of games played in this role
-        score = role_appearances / len(recent_tournament_games)
+        # Score = weighted percentage
+        score = weighted_appearances / total_weight if total_weight > 0 else 0.0
         return score
 
     def _role_coverage_score(self, player: Player, role: str) -> float:
@@ -277,23 +412,10 @@ class LineupPredictor:
     def _solo_queue_activity_score(self, player: Player) -> float:
         """
         Score based on recent solo queue activity
-        Weight: 18%
+        Weight: 0% (REMOVED - not used to avoid API calls)
         """
-        # Get matches from last 7 days
-        cutoff = datetime.utcnow() - timedelta(days=7)
-
-        recent_games = MatchParticipant.query.filter_by(
-            player_id=player.id
-        ).join(Match).filter(
-            Match.created_at >= cutoff,
-            Match.queue_id == 420  # Ranked solo queue
-        ).count()
-
-        # Score: 0-50+ games mapped to 0.0-1.0
-        # 50 games in 7 days = very active = 1.0
-        # 0 games = inactive = 0.0
-        score = min(recent_games / 50, 1.0)
-        return score
+        # Not used anymore - return 0
+        return 0.0
 
     def _performance_rating_score(self, player: Player, role: str) -> float:
         """
@@ -454,12 +576,6 @@ class LineupPredictor:
                     ),
                     'role_coverage': round(
                         self._role_coverage_score(player, role), 3
-                    ),
-                    'solo_queue_activity': round(
-                        self._solo_queue_activity_score(player), 3
-                    ),
-                    'performance_rating': round(
-                        self._performance_rating_score(player, role), 3
                     )
                 }
             }
