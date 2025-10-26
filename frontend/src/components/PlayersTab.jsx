@@ -35,6 +35,12 @@ const PlayersTab = ({
 
 	const sortedRoster = sortByRole(roster);
 
+	// Calculate max games for visual scaling
+	const maxGames = Math.max(...roster.map(r => r.tournament_games || 0), 1);
+	const avgGames = roster.length > 0
+		? roster.reduce((sum, r) => sum + (r.tournament_games || 0), 0) / roster.length
+		: 0;
+
 	const getRoleColor = (role) => {
 		const colors = {
 			TOP: 'bg-blue-500',
@@ -197,6 +203,38 @@ const PlayersTab = ({
 								{entry.player.summoner_name}
 							</h3>
 						</Link>
+
+						{/* Tournament Games Count */}
+						<div className="flex items-center gap-2 flex-shrink-0">
+							<div className="flex flex-col items-end gap-0.5">
+								<div className="flex items-center gap-1.5">
+									{entry.tournament_games >= avgGames && (
+										<span className="text-[10px] font-bold text-success/80 uppercase tracking-wide">
+											Starter
+										</span>
+									)}
+									<span className="text-xs font-bold text-text-primary">
+										{entry.tournament_games || 0}
+									</span>
+									<span className="text-[10px] text-text-muted">
+										Games
+									</span>
+								</div>
+								{/* Visual progress bar */}
+								<div className="w-20 h-1 bg-surface-lighter rounded-full overflow-hidden">
+									<div
+										className={`h-full transition-all duration-300 ${
+											entry.tournament_games >= avgGames
+												? 'bg-gradient-to-r from-success to-primary'
+												: 'bg-gradient-to-r from-slate-600 to-slate-500'
+										}`}
+										style={{
+											width: `${Math.min((entry.tournament_games / maxGames) * 100, 100)}%`
+										}}
+									/>
+								</div>
+							</div>
+						</div>
 
 						{/* Compact Rank Display */}
 						{entry.player.soloq && (

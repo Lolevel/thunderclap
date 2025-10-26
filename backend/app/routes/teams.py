@@ -301,7 +301,7 @@ def delete_team(team_id):
 @bp.route("/<team_id>/roster", methods=["GET"])
 def get_team_roster(team_id):
     """
-    Get team roster
+    Get team roster with tournament games count for each player
 
     Returns:
         {
@@ -312,11 +312,15 @@ def get_team_roster(team_id):
                     "summoner_name": "PlayerName",
                     "role": "TOP",
                     "is_main_roster": true,
+                    "tournament_games": 15,  # Number of tournament games played for this team
                     ...
                 }
             ]
         }
     """
+    from app.models import Match, MatchParticipant
+    from sqlalchemy import func
+
     team = Team.query.get(team_id)
     if not team:
         return jsonify({"error": "Team not found"}), 404
@@ -328,11 +332,35 @@ def get_team_roster(team_id):
         .all()
     )
 
+    # Get tournament games count for all players in one query
+    player_ids = [entry.player_id for entry in roster_entries]
+
+    # Count tournament games per player for this team
+    tournament_games_count = db.session.query(
+        MatchParticipant.player_id,
+        func.count(func.distinct(MatchParticipant.match_id)).label('game_count')
+    ).join(
+        Match, Match.id == MatchParticipant.match_id
+    ).filter(
+        MatchParticipant.player_id.in_(player_ids),
+        MatchParticipant.team_id == team_id,
+        Match.is_tournament_game == True
+    ).group_by(
+        MatchParticipant.player_id
+    ).all()
+
+    # Create a map for quick lookup
+    games_count_map = {str(player_id): count for player_id, count in tournament_games_count}
+
     roster = []
     for entry in roster_entries:
         player_data = entry.player.to_dict()
         roster_data = entry.to_dict()
         roster_data["player"] = player_data
+
+        # Add tournament games count
+        roster_data["tournament_games"] = games_count_map.get(str(entry.player_id), 0)
+
         roster.append(roster_data)
 
     return (

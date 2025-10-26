@@ -202,11 +202,20 @@ class DraftAnalyzer:
         first_herald_count = 0
 
         for match in matches:
-            # Get team stats for this match
-            team_stats = MatchTeamStats.query.filter_by(
-                match_id=match.id,
-                team_id=team.id
-            ).first()
+            # Determine which side the team played on
+            team_won = match.winning_team_id == team.id
+
+            # Get all team stats for this match (2 records: blue and red)
+            all_team_stats = MatchTeamStats.query.filter_by(match_id=match.id).all()
+
+            # Find the stats for our team based on win/loss
+            team_stats = None
+            opponent_stats = None
+            for stats in all_team_stats:
+                if (team_won and stats.win) or (not team_won and not stats.win):
+                    team_stats = stats
+                elif (team_won and not stats.win) or (not team_won and stats.win):
+                    opponent_stats = stats
 
             if team_stats:
                 # Analyze OUR bans
@@ -235,14 +244,8 @@ class DraftAnalyzer:
                 if team_stats.first_herald:
                     first_herald_count += 1
 
-            # Get OPPONENT team stats for bans against us
-            opponent_stats = MatchTeamStats.query.filter(
-                MatchTeamStats.match_id == match.id,
-                MatchTeamStats.team_id != team.id
-            ).first()
-
+            # Analyze opponent's bans (bans against us)
             if opponent_stats:
-                # Analyze opponent's bans (bans against us)
                 opponent_bans = opponent_stats.bans or []
                 for ban in opponent_bans:
                     champion_id = ban.get('championId')

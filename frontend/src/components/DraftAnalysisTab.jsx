@@ -39,7 +39,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 			setDraftData(response.data);
 		} catch (err) {
 			console.error('Failed to fetch draft analysis:', err);
-			setError('Fehler beim Laden der Draft-Analyse');
+			setError('Failed to load draft analysis');
 		} finally {
 			setLoading(false);
 		}
@@ -58,7 +58,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<div className="animate-pulse text-text-muted">
-					Lädt Draft-Analyse...
+					Loading Draft Analysis...
 				</div>
 			</div>
 		);
@@ -68,7 +68,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 		return (
 			<div className="card text-center py-12">
 				<p className="text-text-secondary">
-					{error || 'Keine Daten verfügbar'}
+					{error || 'No data available'}
 				</p>
 			</div>
 		);
@@ -90,11 +90,10 @@ const DraftAnalysisTab = ({ teamId }) => {
 				<div className="flex items-center justify-between">
 					<div>
 						<h2 className="text-xl font-bold text-text-primary mb-1">
-							Draft Analyse
+							Draft Analysis
 						</h2>
 						<p className="text-text-secondary">
-							Basierend auf {matches_analyzed} analysierten
-							Spielen
+							Based on {matches_analyzed} matches analyzed
 						</p>
 					</div>
 					{side_performance && (
@@ -161,7 +160,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 						}`}
 					>
 						<Users className="w-4 h-4" />
-						Spieler Champion Pools
+						Player Champion Pools
 					</button>
 				</div>
 			</div>
@@ -184,7 +183,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 										Champion
 									</th>
 									<th className="text-left py-2 px-3 text-text-muted font-medium">
-										Spieler
+										Player
 									</th>
 									<th className="text-center py-2 px-3 text-text-muted font-medium">
 										Picks
@@ -268,7 +267,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 														<td colSpan="5" className="px-3 py-4">
 															<div className="ml-8 space-y-2">
 																<p className="text-xs font-semibold text-text-muted uppercase mb-3">
-																	Spieler Details
+																	Player Details
 																</p>
 																<div className="grid grid-cols-1 gap-2">
 																	{champ.players.map((player) => (
@@ -322,7 +321,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 					</div>
 				) : (
 					<p className="text-center py-8 text-text-muted">
-						Keine Champion-Daten verfügbar
+						No champion data available
 					</p>
 				)}
 			</div>
@@ -332,7 +331,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 				<div className="card">
 					<h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
 						<Award className="w-5 h-5 text-accent" />
-						First Pick Priorität
+						First Pick Priority
 					</h3>
 					<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 						{first_pick_priority.map((pick, index) => (
@@ -352,7 +351,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 								</div>
 								<div className="flex items-center justify-between text-sm">
 									<span className="text-text-muted">
-										{pick.frequency}x gepickt
+										{pick.frequency}x picked
 									</span>
 									<span
 										className={`font-semibold ${
@@ -374,7 +373,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 				<div className="card">
 					<h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
 						<Ban className="w-5 h-5 text-error" />
-						Ban Analyse
+						Ban Analysis
 					</h3>
 
 					<div className="space-y-6">
@@ -382,7 +381,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 						<div>
 							<div className="flex items-center justify-between mb-4">
 								<h4 className="font-semibold text-text-primary">
-									Rotation 1 (Erste 3 Bans)
+									First Ban Phase (3 Bans)
 								</h4>
 								<button
 									onClick={() => setExpandedBansPhase1(!expandedBansPhase1)}
@@ -391,12 +390,12 @@ const DraftAnalysisTab = ({ teamId }) => {
 									{expandedBansPhase1 ? (
 										<>
 											<ChevronDown className="w-4 h-4" />
-											Weniger anzeigen
+											Show Less
 										</>
 									) : (
 										<>
 											<ChevronRight className="w-4 h-4" />
-											Alle anzeigen
+											Show All
 										</>
 									)}
 								</button>
@@ -406,7 +405,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 								{/* Our Bans */}
 								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
 									<h5 className="text-sm font-semibold text-primary mb-3">
-										Unsere Lieblingsbans
+										Team Ban Priority
 									</h5>
 									{favorite_bans?.phase_1 && favorite_bans.phase_1.length > 0 ? (
 										<div className="space-y-2">
@@ -435,14 +434,14 @@ const DraftAnalysisTab = ({ teamId }) => {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+										<p className="text-sm text-text-muted text-center py-4">No data</p>
 									)}
 								</div>
 
 								{/* Bans Against Us */}
 								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
 									<h5 className="text-sm font-semibold text-error mb-3">
-										Bans gegen uns
+										Target Bans (Against Team)
 									</h5>
 									{bans_against?.phase_1 && bans_against.phase_1.length > 0 ? (
 										<div className="space-y-2">
@@ -471,7 +470,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+										<p className="text-sm text-text-muted text-center py-4">No data</p>
 									)}
 								</div>
 							</div>
@@ -481,7 +480,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 						<div>
 							<div className="flex items-center justify-between mb-4">
 								<h4 className="font-semibold text-text-primary">
-									Rotation 2 (Letzte 2 Bans)
+									Second Ban Phase (2 Bans)
 								</h4>
 								<button
 									onClick={() => setExpandedBansPhase2(!expandedBansPhase2)}
@@ -490,12 +489,12 @@ const DraftAnalysisTab = ({ teamId }) => {
 									{expandedBansPhase2 ? (
 										<>
 											<ChevronDown className="w-4 h-4" />
-											Weniger anzeigen
+											Show Less
 										</>
 									) : (
 										<>
 											<ChevronRight className="w-4 h-4" />
-											Alle anzeigen
+											Show All
 										</>
 									)}
 								</button>
@@ -505,7 +504,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 								{/* Our Bans */}
 								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
 									<h5 className="text-sm font-semibold text-primary mb-3">
-										Unsere Lieblingsbans
+										Team Ban Priority
 									</h5>
 									{favorite_bans?.phase_2 && favorite_bans.phase_2.length > 0 ? (
 										<div className="space-y-2">
@@ -534,14 +533,14 @@ const DraftAnalysisTab = ({ teamId }) => {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+										<p className="text-sm text-text-muted text-center py-4">No data</p>
 									)}
 								</div>
 
 								{/* Bans Against Us */}
 								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
 									<h5 className="text-sm font-semibold text-error mb-3">
-										Bans gegen uns
+										Target Bans (Against Team)
 									</h5>
 									{bans_against?.phase_2 && bans_against.phase_2.length > 0 ? (
 										<div className="space-y-2">
@@ -570,7 +569,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+										<p className="text-sm text-text-muted text-center py-4">No data</p>
 									)}
 								</div>
 							</div>
@@ -588,10 +587,10 @@ const DraftAnalysisTab = ({ teamId }) => {
 						<div>
 							<h3 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
 								<Users className="w-5 h-5 text-primary" />
-								Spieler Champion Pools
+								Player Champion Pools
 							</h3>
 							<p className="text-sm text-text-muted">
-								Zeigt die Champion-Statistiken aller Spieler im Roster
+								Shows champion statistics for all players on the roster
 							</p>
 						</div>
 
@@ -606,7 +605,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 								}`}
 							>
 								<List className="w-4 h-4" />
-								Übersicht
+								Overview
 							</button>
 							<button
 								onClick={() => setPlayerViewMode('comparison')}
@@ -617,14 +616,14 @@ const DraftAnalysisTab = ({ teamId }) => {
 								}`}
 							>
 								<Columns className="w-4 h-4" />
-								Vergleich
+								Comparison
 							</button>
 						</div>
 					</div>
 
 					{!playerPools || !playerPools.players || playerPools.players.length === 0 ? (
 						<p className="text-center py-8 text-text-muted">
-							Keine Spieler-Daten verfügbar
+							No player data available
 						</p>
 					) : playerViewMode === 'overview' ? (
 						<div className="space-y-6">
@@ -666,7 +665,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 															Champion
 														</th>
 														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
-															Spiele
+															Games
 														</th>
 														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
 															W-L
@@ -754,7 +753,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 										</div>
 									) : (
 										<p className="text-sm text-text-muted text-center py-6 bg-surface-hover rounded">
-											Keine Champion-Daten verfügbar
+											No champion data available
 										</p>
 									)}
 								</div>
@@ -847,7 +846,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 												</div>
 											) : (
 												<p className="text-xs text-text-muted text-center py-8">
-													Keine Champion-Daten
+													No champion data
 												</p>
 											)}
 										</div>
