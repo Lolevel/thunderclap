@@ -32,14 +32,14 @@ const Teams = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="flex items-center justify-center flex-1">
         <div className="animate-pulse text-slate-400">Lädt...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+    <div className="p-6">
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
@@ -98,7 +98,22 @@ const Teams = () => {
                   <h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors mb-1">
                     {team.name}
                   </h3>
-                  <p className="text-sm text-slate-400 mb-4">{team.tag}</p>
+                  <p className="text-sm text-slate-400 mb-2">{team.tag}</p>
+
+                  {team.average_rank && (
+                    <div className="flex items-center gap-2 mb-4">
+                      {team.average_rank_icon && (
+                        <img
+                          src={team.average_rank_icon}
+                          alt={team.average_rank}
+                          className="w-5 h-5"
+                        />
+                      )}
+                      <span className="text-xs text-slate-400 font-medium">
+                        Ø {team.average_rank}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between text-slate-400 group-hover:text-cyan-400 transition-colors text-sm">
                     <span>Zum Team →</span>

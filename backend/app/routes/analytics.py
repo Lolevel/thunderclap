@@ -203,20 +203,155 @@ def get_draft_analysis(team_id):
         if "error" in analysis:
             return jsonify(analysis), 200
 
-        # Get favorite bans (from stored patterns if available)
-        favorite_bans = analyzer.get_favorite_bans(team)
-
         # Get first pick priority
         first_pick_priority = analyzer.get_first_pick_priority(team)
 
-        analysis['favorite_bans'] = favorite_bans
         analysis['first_pick_priority'] = first_pick_priority
+
+        # Enrich bans with champion data
+        from app.utils.champion_helper import batch_enrich_champions
+
+        # Collect all champion IDs from bans
+        all_ban_ids = set()
+        if 'favorite_bans' in analysis:
+            for phase_bans in analysis['favorite_bans'].values():
+                for ban in phase_bans:
+                    all_ban_ids.add(ban['champion_id'])
+        if 'bans_against' in analysis:
+            for phase_bans in analysis['bans_against'].values():
+                for ban in phase_bans:
+                    all_ban_ids.add(ban['champion_id'])
+
+        # Batch enrich
+        champion_data_map = batch_enrich_champions(list(all_ban_ids), include_images=True)
+
+        # Enrich favorite_bans
+        if 'favorite_bans' in analysis:
+            for phase_key, phase_bans in analysis['favorite_bans'].items():
+                for ban in phase_bans:
+                    champ_info = champion_data_map.get(ban['champion_id'], {})
+                    ban['champion'] = champ_info.get('name', f"Champion {ban['champion_id']}")
+                    ban['champion_icon'] = champ_info.get('icon_url')
+                    ban['frequency'] = ban.pop('count')
+
+        # Enrich bans_against
+        if 'bans_against' in analysis:
+            for phase_key, phase_bans in analysis['bans_against'].items():
+                for ban in phase_bans:
+                    champ_info = champion_data_map.get(ban['champion_id'], {})
+                    ban['champion'] = champ_info.get('name', f"Champion {ban['champion_id']}")
+                    ban['champion_icon'] = champ_info.get('icon_url')
+                    ban['frequency'] = ban.pop('count')
 
         return jsonify(analysis), 200
 
     except Exception as e:
         current_app.logger.error(f"Error getting draft analysis: {str(e)}")
         return jsonify({"error": "Failed to get draft analysis", "details": str(e)}), 500
+
+
+@bp.route("/teams/<team_id>/player-champion-pools", methods=["GET"])
+def get_team_player_champion_pools(team_id):
+    """
+    Get champion pools for all team members (individual player stats across all teams)
+
+    Returns:
+        {
+            "players": [
+                {
+                    "player_id": "uuid",
+                    "player_name": "...",
+                    "champions": [
+                        {
+                            "champion": "Yasuo",
+                            "champion_id": 157,
+                            "champion_icon": "...",
+                            "games": 15,
+                            "wins": 10,
+                            "losses": 5,
+                            "winrate": 66.7,
+                            "kda": 3.5,
+                            "cs_per_min": 7.8
+                        },
+                        ...
+                    ]
+                },
+                ...
+            ]
+        }
+    """
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+
+    try:
+        # Get active roster
+        active_roster = [r for r in team.rosters if r.leave_date is None]
+
+        player_pools = []
+
+        from app.utils.champion_helper import batch_enrich_champions
+
+        for roster_entry in active_roster:
+            player = roster_entry.player
+
+            # Get ALL champions for this player (not just tournament)
+            # Try tournament first, if empty try without filter
+            champions = PlayerChampion.query.filter_by(
+                player_id=player.id,
+                game_type='tournament'
+            ).order_by(
+                PlayerChampion.games_played.desc()
+            ).limit(10).all()
+
+            # If no tournament champions found, try all game types
+            if not champions:
+                champions = PlayerChampion.query.filter_by(
+                    player_id=player.id
+                ).order_by(
+                    PlayerChampion.games_played.desc()
+                ).limit(10).all()
+
+            # If still no champions, add player with empty champion list
+            champion_list = []
+
+            if champions:
+                # Batch enrich champions
+                champion_ids = [champ.champion_id for champ in champions]
+                champion_data_map = batch_enrich_champions(champion_ids, include_images=True)
+
+                for champ in champions:
+                    champ_info = champion_data_map.get(champ.champion_id, {
+                        'name': champ.champion_name,
+                        'icon_url': None
+                    })
+
+                    champion_list.append({
+                        "champion": champ_info.get('name', champ.champion_name),
+                        "champion_id": champ.champion_id,
+                        "champion_icon": champ_info.get('icon_url'),
+                        "games": champ.games_played,
+                        "wins": champ.wins,
+                        "losses": champ.losses,
+                        "winrate": round((champ.wins / champ.games_played * 100) if champ.games_played > 0 else 0, 1),
+                        "kda": round(float(champ.kda_average), 2) if champ.kda_average else 0,
+                        "cs_per_min": round(float(champ.cs_per_min), 1) if champ.cs_per_min else 0
+                    })
+
+            # Always add the player, even if they have no champion data
+            player_pools.append({
+                "player_id": str(player.id),
+                "player_name": player.summoner_name,
+                "profile_icon_id": player.profile_icon_id,
+                "role": roster_entry.role or "UNKNOWN",
+                "champions": champion_list
+            })
+
+        return jsonify({"players": player_pools}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error getting player champion pools: {str(e)}")
+        return jsonify({"error": "Failed to get player champion pools", "details": str(e)}), 500
 
 
 @bp.route("/teams/<team_id>/scouting-report", methods=["GET"])
@@ -1059,6 +1194,35 @@ def get_team_matches(team_id):
                 else:
                     enemy_team_participants.append(participant_info)
 
+            # Get ban data from MatchTeamStats
+            from app.models import MatchTeamStats
+
+            team_stats_list = MatchTeamStats.query.filter_by(match_id=match.id).all()
+            bans_data = {"blue": [], "red": []}
+
+            for team_stats in team_stats_list:
+                side = "blue" if team_stats.riot_team_id == 100 else "red"
+                if team_stats.bans:
+                    # Enrich ban data with champion names
+                    enriched_bans = []
+                    ban_champion_ids = [ban.get('championId') for ban in team_stats.bans if ban.get('championId', -1) != -1]
+                    ban_champion_map = batch_enrich_champions(ban_champion_ids, include_images=True)
+
+                    for ban in team_stats.bans:
+                        champ_id = ban.get('championId', -1)
+                        if champ_id == -1:
+                            continue  # Skip empty bans
+
+                        champ_info = ban_champion_map.get(champ_id, {'name': 'Unknown', 'icon_url': None})
+                        enriched_bans.append({
+                            'champion_id': champ_id,
+                            'champion_name': champ_info.get('name', 'Unknown'),
+                            'champion_icon': champ_info.get('icon_url'),
+                            'pick_turn': ban.get('pickTurn')
+                        })
+
+                    bans_data[side] = enriched_bans
+
             result_matches.append({
                 "match_id": match.match_id,
                 "game_creation": match.game_creation or 0,  # Already in milliseconds
@@ -1067,7 +1231,8 @@ def get_team_matches(team_id):
                 "win": team_won,
                 "team_players_count": team_players_count,
                 "our_team": our_team_participants,
-                "enemy_team": enemy_team_participants
+                "enemy_team": enemy_team_participants,
+                "bans": bans_data
             })
 
         return jsonify({
@@ -1219,6 +1384,35 @@ def get_player_matches(player_id):
             # Determine if player won
             win = p.win
 
+            # Get ban data from MatchTeamStats
+            from app.models import MatchTeamStats
+
+            team_stats_list = MatchTeamStats.query.filter_by(match_id=match.id).all()
+            bans_data = {"blue": [], "red": []}
+
+            for team_stats in team_stats_list:
+                side = "blue" if team_stats.riot_team_id == 100 else "red"
+                if team_stats.bans:
+                    # Enrich ban data with champion names
+                    enriched_bans = []
+                    ban_champion_ids = [ban.get('championId') for ban in team_stats.bans if ban.get('championId', -1) != -1]
+                    ban_champion_map = batch_enrich_champions(ban_champion_ids, include_images=True)
+
+                    for ban in team_stats.bans:
+                        champ_id = ban.get('championId', -1)
+                        if champ_id == -1:
+                            continue  # Skip empty bans
+
+                        champ_info = ban_champion_map.get(champ_id, {'name': 'Unknown', 'icon_url': None})
+                        enriched_bans.append({
+                            'champion_id': champ_id,
+                            'champion_name': champ_info.get('name', 'Unknown'),
+                            'champion_icon': champ_info.get('icon_url'),
+                            'pick_turn': ban.get('pickTurn')
+                        })
+
+                    bans_data[side] = enriched_bans
+
             matches.append({
                 "match_id": match.match_id,
                 "game_creation": match.game_creation or 0,
@@ -1226,7 +1420,8 @@ def get_player_matches(player_id):
                 "game_version": match.game_version,
                 "win": win,
                 "our_team": our_team,
-                "enemy_team": enemy_team
+                "enemy_team": enemy_team,
+                "bans": bans_data
             })
 
         return jsonify({"matches": matches}), 200

@@ -64,14 +64,14 @@ const Dashboard = () => {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+			<div className="flex items-center justify-center flex-1">
 				<div className="animate-pulse text-slate-400">Lädt...</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+		<div className="p-6">
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<ImportTeamModal
 					isOpen={isImportModalOpen}
@@ -182,9 +182,26 @@ const Dashboard = () => {
 												<h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors truncate">
 													{team.name}
 												</h3>
-												<p className="text-xs text-slate-400">
-													{team.tag}
-												</p>
+												<div className="flex items-center gap-2 mt-0.5">
+													<p className="text-xs text-slate-400">
+														{team.tag}
+													</p>
+													{team.average_rank && (
+														<>
+															<span className="text-slate-600">•</span>
+															{team.average_rank_icon && (
+																<img
+																	src={team.average_rank_icon}
+																	alt={team.average_rank}
+																	className="w-4 h-4"
+																/>
+															)}
+															<span className="text-xs text-slate-500 font-medium">
+																Ø {team.average_rank}
+															</span>
+														</>
+													)}
+												</div>
 											</div>
 										</div>
 										<ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all duration-300 flex-shrink-0 ml-2" />

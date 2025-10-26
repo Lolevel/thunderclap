@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { User, Search } from 'lucide-react';
 import api from '../config/api';
 import RoleIcon from '../components/RoleIcon';
+import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
 const Players = () => {
   const [players, setPlayers] = useState([]);
@@ -71,14 +72,14 @@ const Players = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      <div className="flex items-center justify-center flex-1">
         <div className="animate-pulse text-slate-400">Lädt...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+    <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
         {/* Header */}
         <div>
@@ -122,8 +123,13 @@ const Players = () => {
                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/0 to-blue-500/0 group-hover:from-cyan-500/5 group-hover:to-blue-500/5 transition-all duration-300" />
 
                 <div className="relative flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow duration-300">
-                    <User className="w-6 h-6 text-white" />
+                  <div className="w-12 h-12 rounded-lg overflow-hidden shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow duration-300 border border-cyan-500/30">
+                    <img
+                      src={getSummonerIconUrl(player.profile_icon_id)}
+                      alt={player.summoner_name}
+                      className="w-full h-full object-cover"
+                      onError={handleSummonerIconError}
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors truncate">

@@ -51,7 +51,7 @@ class DraftAnalyzer:
         champion_picks = defaultdict(lambda: {
             'total': 0,
             'wins': 0,
-            'players': defaultdict(int)  # Track which players played this champion
+            'players': defaultdict(lambda: {'picks': 0, 'wins': 0})  # Track detailed stats per player
         })
 
         # Side performance
@@ -105,7 +105,9 @@ class DraftAnalyzer:
                     champion_picks[champion_id]['wins'] += 1
 
                 if player_id:
-                    champion_picks[champion_id]['players'][player_id] += 1
+                    champion_picks[champion_id]['players'][player_id]['picks'] += 1
+                    if participant.win:
+                        champion_picks[champion_id]['players'][player_id]['wins'] += 1
 
         # Build team champion pool with player info
         # Enrich with champion data from database
@@ -116,19 +118,6 @@ class DraftAnalyzer:
 
         team_champion_pool = []
         for champion_id, data in champion_picks.items():
-            # Find most common player for this champion
-            most_common_player_id = max(
-                data['players'].items(),
-                key=lambda x: x[1],
-                default=(None, 0)
-            )[0]
-
-            player_name = None
-            if most_common_player_id:
-                player = Player.query.get(most_common_player_id)
-                if player:
-                    player_name = player.summoner_name
-
             winrate = (data['wins'] / data['total'] * 100) if data['total'] > 0 else 0
 
             # Get champion info from database
@@ -137,6 +126,33 @@ class DraftAnalyzer:
                 'name': f'Champion {champion_id}',
                 'key': f'Champion{champion_id}'
             })
+
+            # Build list of all players who played this champion
+            players_list = []
+            for player_id, player_data in data['players'].items():
+                player = Player.query.get(player_id)
+                if player:
+                    player_losses = player_data['picks'] - player_data['wins']
+                    player_winrate = (player_data['wins'] / player_data['picks'] * 100) if player_data['picks'] > 0 else 0
+                    players_list.append({
+                        'player_id': str(player_id),
+                        'player_name': player.summoner_name,
+                        'picks': player_data['picks'],
+                        'wins': player_data['wins'],
+                        'losses': player_losses,
+                        'winrate': round(player_winrate, 1)
+                    })
+
+            # Sort players by pick count (most picks first)
+            players_list.sort(key=lambda x: x['picks'], reverse=True)
+
+            # For display: show primary player or "Multiple"
+            if len(players_list) == 1:
+                display_player = players_list[0]['player_name']
+            elif len(players_list) > 1:
+                display_player = f"{players_list[0]['player_name']} +{len(players_list)-1}"
+            else:
+                display_player = None
 
             team_champion_pool.append({
                 'champion_id': champion_id,
@@ -147,8 +163,9 @@ class DraftAnalyzer:
                 'wins': data['wins'],
                 'losses': data['total'] - data['wins'],
                 'winrate': round(winrate, 1),
-                'player': player_name,
-                'player_id': str(most_common_player_id) if most_common_player_id else None
+                'player': display_player,
+                'players': players_list,  # All players with individual stats
+                'has_multiple_players': len(players_list) > 1
             })
 
         # Sort by picks descending
@@ -173,6 +190,8 @@ class DraftAnalyzer:
         # Analyze bans and objectives from MatchTeamStats
         favorite_bans_phase1 = defaultdict(int)  # Pick turns 1-6 (first 3 bans per team)
         favorite_bans_phase2 = defaultdict(int)  # Pick turns 7-10 (last 2 bans per team)
+        bans_against_phase1 = defaultdict(int)  # Bans opponents use against team (phase 1)
+        bans_against_phase2 = defaultdict(int)  # Bans opponents use against team (phase 2)
 
         # Objective control
         total_baron = 0
@@ -190,7 +209,7 @@ class DraftAnalyzer:
             ).first()
 
             if team_stats:
-                # Analyze bans
+                # Analyze OUR bans
                 bans = team_stats.bans or []
                 for ban in bans:
                     champion_id = ban.get('championId')
@@ -216,16 +235,45 @@ class DraftAnalyzer:
                 if team_stats.first_herald:
                     first_herald_count += 1
 
+            # Get OPPONENT team stats for bans against us
+            opponent_stats = MatchTeamStats.query.filter(
+                MatchTeamStats.match_id == match.id,
+                MatchTeamStats.team_id != team.id
+            ).first()
+
+            if opponent_stats:
+                # Analyze opponent's bans (bans against us)
+                opponent_bans = opponent_stats.bans or []
+                for ban in opponent_bans:
+                    champion_id = ban.get('championId')
+                    pick_turn = ban.get('pickTurn')
+
+                    if champion_id and champion_id != -1:
+                        if pick_turn <= 6:
+                            bans_against_phase1[champion_id] += 1
+                        else:
+                            bans_against_phase2[champion_id] += 1
+
         # Convert ban counts to sorted lists
         favorite_bans_phase1_list = [
             {'champion_id': champ_id, 'count': count}
             for champ_id, count in sorted(favorite_bans_phase1.items(), key=lambda x: x[1], reverse=True)
-        ][:10]  # Top 10
+        ]  # All bans
 
         favorite_bans_phase2_list = [
             {'champion_id': champ_id, 'count': count}
             for champ_id, count in sorted(favorite_bans_phase2.items(), key=lambda x: x[1], reverse=True)
-        ][:10]  # Top 10
+        ]  # All bans
+
+        bans_against_phase1_list = [
+            {'champion_id': champ_id, 'count': count}
+            for champ_id, count in sorted(bans_against_phase1.items(), key=lambda x: x[1], reverse=True)
+        ]  # All bans against
+
+        bans_against_phase2_list = [
+            {'champion_id': champ_id, 'count': count}
+            for champ_id, count in sorted(bans_against_phase2.items(), key=lambda x: x[1], reverse=True)
+        ]  # All bans against
 
         # Calculate objective rates
         games_count = len(matches)
@@ -257,6 +305,10 @@ class DraftAnalyzer:
             "favorite_bans": {
                 "phase_1": favorite_bans_phase1_list,  # First ban phase (turns 1-6)
                 "phase_2": favorite_bans_phase2_list   # Second ban phase (turns 7-10)
+            },
+            "bans_against": {
+                "phase_1": bans_against_phase1_list,  # Bans against team (phase 1)
+                "phase_2": bans_against_phase2_list   # Bans against team (phase 2)
             },
             "objective_control": objective_control
         }

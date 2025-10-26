@@ -129,7 +129,7 @@ const TeamDetail = () => {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+			<div className="flex items-center justify-center flex-1">
 				<div className="animate-pulse text-slate-400">Lädt...</div>
 			</div>
 		);
@@ -137,7 +137,7 @@ const TeamDetail = () => {
 
 	if (!team) {
 		return (
-			<div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+			<div className="p-6">
 				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
 					<p className="text-slate-400">Team nicht gefunden</p>
 				</div>
@@ -146,7 +146,7 @@ const TeamDetail = () => {
 	}
 
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6">
+		<div className="p-6">
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<Link
 					to="/teams"

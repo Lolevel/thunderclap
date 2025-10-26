@@ -1,42 +1,58 @@
-import { Shield, Sword, Wand2, Target, Heart } from 'lucide-react';
-
 /**
  * Role icon component that displays the appropriate icon for each role
- * Uses Lucide React icons
+ * Uses official League of Legends role SVGs from CommunityDragon
  */
 const RoleIcon = ({ role, size = 16, className = '' }) => {
-  const iconProps = {
-    size,
-    className: `${className}`,
-    strokeWidth: 2
-  };
-
   // Normalize role to uppercase for comparison
   const normalizedRole = (role || '').toUpperCase();
 
-  switch (normalizedRole) {
-    case 'TOP':
-      return <Shield {...iconProps} className={`${className} text-blue-400`} title="Top" />;
+  // Map roles to CommunityDragon position names
+  const getRolePosition = () => {
+    switch (normalizedRole) {
+      case 'TOP':
+        return 'top';
+      case 'JUNGLE':
+        return 'jungle';
+      case 'MID':
+      case 'MIDDLE':
+        return 'middle';
+      case 'BOT':
+      case 'BOTTOM':
+      case 'ADC':
+        return 'bottom';
+      case 'SUPPORT':
+      case 'UTILITY':
+        return 'utility';
+      default:
+        return null;
+    }
+  };
 
-    case 'JUNGLE':
-      return <Sword {...iconProps} className={`${className} text-green-400`} title="Jungle" />;
+  const position = getRolePosition();
 
-    case 'MID':
-    case 'MIDDLE':
-      return <Wand2 {...iconProps} className={`${className} text-purple-400`} title="Mid" />;
-
-    case 'BOT':
-    case 'BOTTOM':
-    case 'ADC':
-      return <Target {...iconProps} className={`${className} text-red-400`} title="Bot" />;
-
-    case 'SUPPORT':
-    case 'UTILITY':
-      return <Heart {...iconProps} className={`${className} text-yellow-400`} title="Support" />;
-
-    default:
-      return <span className={`${className} text-xs text-slate-400`}>?</span>;
+  if (!position) {
+    return (
+      <span
+        className={`${className} inline-flex items-center justify-center text-slate-400 font-bold`}
+        style={{ width: size, height: size, fontSize: size * 0.75 }}
+        title="Unknown Role"
+      >
+        ?
+      </span>
+    );
   }
+
+  const svgUrl = `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-static-assets/global/default/svg/position-${position}.svg`;
+
+  return (
+    <img
+      src={svgUrl}
+      alt={normalizedRole}
+      title={normalizedRole.charAt(0) + normalizedRole.slice(1).toLowerCase()}
+      style={{ width: size, height: size }}
+      className={`inline-block ${className}`}
+    />
+  );
 };
 
 export default RoleIcon;

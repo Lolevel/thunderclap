@@ -1,15 +1,36 @@
-import { useEffect, useState } from 'react';
-import { Target, Ban, TrendingUp, Award } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Target, Ban, TrendingUp, Award, Users, List, Columns, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '../config/api';
+import { displayRole } from '../utils/roleMapping';
+import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
 const DraftAnalysisTab = ({ teamId }) => {
 	const [draftData, setDraftData] = useState(null);
+	const [playerPools, setPlayerPools] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
+	const [activeView, setActiveView] = useState('team'); // 'team' or 'players'
+	const [playerViewMode, setPlayerViewMode] = useState('overview'); // 'overview' or 'comparison'
+	const [expandedChampions, setExpandedChampions] = useState(new Set());
+	const [expandedBansPhase1, setExpandedBansPhase1] = useState(false);
+	const [expandedBansPhase2, setExpandedBansPhase2] = useState(false);
 
 	useEffect(() => {
 		fetchDraftAnalysis();
+		fetchPlayerPools();
 	}, [teamId]);
+
+	const toggleChampion = (championId) => {
+		setExpandedChampions(prev => {
+			const newSet = new Set(prev);
+			if (newSet.has(championId)) {
+				newSet.delete(championId);
+			} else {
+				newSet.add(championId);
+			}
+			return newSet;
+		});
+	};
 
 	const fetchDraftAnalysis = async () => {
 		try {
@@ -21,6 +42,15 @@ const DraftAnalysisTab = ({ teamId }) => {
 			setError('Fehler beim Laden der Draft-Analyse');
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const fetchPlayerPools = async () => {
+		try {
+			const response = await api.get(`/teams/${teamId}/player-champion-pools`);
+			setPlayerPools(response.data);
+		} catch (err) {
+			console.error('Failed to fetch player champion pools:', err);
 		}
 	};
 
@@ -47,6 +77,7 @@ const DraftAnalysisTab = ({ teamId }) => {
 	const {
 		team_champion_pool,
 		favorite_bans,
+		bans_against,
 		first_pick_priority,
 		side_performance,
 		matches_analyzed,
@@ -107,6 +138,37 @@ const DraftAnalysisTab = ({ teamId }) => {
 				</div>
 			</div>
 
+			{/* View Toggle */}
+			<div className="flex justify-center">
+				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 p-1.5 inline-flex gap-1">
+					<button
+						onClick={() => setActiveView('team')}
+						className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-300 font-medium ${
+							activeView === 'team'
+								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20'
+								: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+						}`}
+					>
+						<Target className="w-4 h-4" />
+						Team Champion Pool
+					</button>
+					<button
+						onClick={() => setActiveView('players')}
+						className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-300 font-medium ${
+							activeView === 'players'
+								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20'
+								: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+						}`}
+					>
+						<Users className="w-4 h-4" />
+						Spieler Champion Pools
+					</button>
+				</div>
+			</div>
+
+			{/* Team Champion Pool View */}
+			{activeView === 'team' && (
+				<>
 			{/* Team Champion Pool */}
 			<div className="card">
 				<h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
@@ -138,57 +200,123 @@ const DraftAnalysisTab = ({ teamId }) => {
 							<tbody>
 								{team_champion_pool
 									.slice(0, 15)
-									.map((champ, index) => (
-										<tr
-											key={index}
-											className="border-b border-border/50 hover:bg-surface-hover transition-colors">
-											<td className="py-3 px-3">
-												<div className="flex items-center gap-2">
-													{champ.champion_icon && (
-														<div className="w-8 h-8 rounded-full overflow-hidden">
-															<img
-																src={
-																	champ.champion_icon
-																}
-																alt={
-																	champ.champion
-																}
-																className="w-full h-full object-cover scale-110"
-																onError={(
-																	e
-																) => {
-																	e.target.style.display =
-																		'none';
-																}}
-															/>
+									.map((champ, index) => {
+										const isExpanded = expandedChampions.has(champ.champion_id);
+										const hasMultiplePlayers = champ.has_multiple_players;
+
+										return (
+											<React.Fragment key={index}>
+												{/* Main Row */}
+												<tr
+													className={`border-b border-border/50 transition-colors ${
+														hasMultiplePlayers ? 'cursor-pointer hover:bg-surface-hover' : 'hover:bg-surface-hover/50'
+													}`}
+													onClick={() => hasMultiplePlayers && toggleChampion(champ.champion_id)}
+												>
+													<td className="py-3 px-3">
+														<div className="flex items-center gap-2">
+															{hasMultiplePlayers && (
+																<div className="flex-shrink-0">
+																	{isExpanded ? (
+																		<ChevronDown className="w-4 h-4 text-primary" />
+																	) : (
+																		<ChevronRight className="w-4 h-4 text-text-muted" />
+																	)}
+																</div>
+															)}
+															{champ.champion_icon && (
+																<div className="w-8 h-8 rounded-full overflow-hidden">
+																	<img
+																		src={champ.champion_icon}
+																		alt={champ.champion}
+																		className="w-full h-full object-cover scale-110"
+																		onError={(e) => {
+																			e.target.style.display = 'none';
+																		}}
+																	/>
+																</div>
+															)}
+															<span className="font-semibold text-text-primary">
+																{champ.champion}
+															</span>
 														</div>
-													)}
-													<span className="font-semibold text-text-primary">
-														{champ.champion}
-													</span>
-												</div>
-											</td>
-											<td className="py-3 px-3 text-text-secondary">
-												{champ.player || 'N/A'}
-											</td>
-											<td className="py-3 px-3 text-center font-medium text-text-primary">
-												{champ.picks}
-											</td>
-											<td className="py-3 px-3 text-center text-text-secondary">
-												{champ.wins}-{champ.losses}
-											</td>
-											<td className="py-3 px-3 text-center">
-												<span
-													className={`font-semibold ${
-														champ.winrate >= 50
-															? 'text-success'
-															: 'text-error'
-													}`}>
-													{champ.winrate.toFixed(1)}%
-												</span>
-											</td>
-										</tr>
-									))}
+													</td>
+													<td className="py-3 px-3 text-text-secondary">
+														{champ.player || 'N/A'}
+													</td>
+													<td className="py-3 px-3 text-center font-medium text-text-primary">
+														{champ.picks}
+													</td>
+													<td className="py-3 px-3 text-center text-text-secondary">
+														{champ.wins}-{champ.losses}
+													</td>
+													<td className="py-3 px-3 text-center">
+														<span
+															className={`font-semibold ${
+																champ.winrate >= 50
+																	? 'text-success'
+																	: 'text-error'
+															}`}>
+															{champ.winrate.toFixed(1)}%
+														</span>
+													</td>
+												</tr>
+
+												{/* Expanded Player Details */}
+												{hasMultiplePlayers && isExpanded && (
+													<tr className="bg-surface-lighter/50">
+														<td colSpan="5" className="px-3 py-4">
+															<div className="ml-8 space-y-2">
+																<p className="text-xs font-semibold text-text-muted uppercase mb-3">
+																	Spieler Details
+																</p>
+																<div className="grid grid-cols-1 gap-2">
+																	{champ.players.map((player) => (
+																		<div
+																			key={player.player_id}
+																			className="flex items-center justify-between p-3 bg-surface/40 rounded-lg border border-border/50"
+																		>
+																			<div className="flex items-center gap-3">
+																				<span className="font-medium text-text-primary">
+																					{player.player_name}
+																				</span>
+																			</div>
+																			<div className="flex items-center gap-6 text-sm">
+																				<div className="text-center">
+																					<p className="font-medium text-text-primary">
+																						{player.picks}
+																					</p>
+																					<p className="text-xs text-text-muted">Picks</p>
+																				</div>
+																				<div className="text-center">
+																					<p className="text-text-secondary">
+																						{player.wins}-{player.losses}
+																					</p>
+																					<p className="text-xs text-text-muted">W-L</p>
+																				</div>
+																				<div className="text-center">
+																					<p
+																						className={`font-semibold ${
+																							player.winrate >= 50
+																								? 'text-success'
+																								: 'text-error'
+																						}`}
+																					>
+																						{player.winrate}%
+																					</p>
+																					<p className="text-xs text-text-muted">Winrate</p>
+																				</div>
+																			</div>
+																		</div>
+																	))}
+																</div>
+															</div>
+														</td>
+													</tr>
+												)}
+											</React.Fragment>
+										);
+									})}
 							</tbody>
 						</table>
 					</div>
@@ -241,49 +369,493 @@ const DraftAnalysisTab = ({ teamId }) => {
 				</div>
 			)}
 
-			{/* Favorite Bans */}
-			{favorite_bans && (
+			{/* Ban Analysis */}
+			{(favorite_bans || bans_against) && (
 				<div className="card">
-					<h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+					<h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
 						<Ban className="w-5 h-5 text-error" />
-						Lieblings-Bans (Nach Rotation)
+						Ban Analyse
 					</h3>
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-						{['rotation_1', 'rotation_2'].map(
-							(rotation, rotIdx) => (
-								<div
-									key={rotation}
-									className="p-4 bg-surface-hover rounded-lg">
-									<h4 className="font-semibold text-text-primary mb-3">
-										Rotation {rotIdx + 1}
-									</h4>
-									{favorite_bans[rotation] &&
-									favorite_bans[rotation].length > 0 ? (
+
+					<div className="space-y-6">
+						{/* Phase 1 */}
+						<div>
+							<div className="flex items-center justify-between mb-4">
+								<h4 className="font-semibold text-text-primary">
+									Rotation 1 (Erste 3 Bans)
+								</h4>
+								<button
+									onClick={() => setExpandedBansPhase1(!expandedBansPhase1)}
+									className="flex items-center gap-2 px-3 py-1 bg-surface-hover rounded-lg text-sm text-primary hover:bg-surface-lighter transition-colors"
+								>
+									{expandedBansPhase1 ? (
+										<>
+											<ChevronDown className="w-4 h-4" />
+											Weniger anzeigen
+										</>
+									) : (
+										<>
+											<ChevronRight className="w-4 h-4" />
+											Alle anzeigen
+										</>
+									)}
+								</button>
+							</div>
+
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{/* Our Bans */}
+								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
+									<h5 className="text-sm font-semibold text-primary mb-3">
+										Unsere Lieblingsbans
+									</h5>
+									{favorite_bans?.phase_1 && favorite_bans.phase_1.length > 0 ? (
 										<div className="space-y-2">
-											{favorite_bans[rotation].map(
-												(ban, idx) => (
-													<div
-														key={idx}
-														className="flex items-center justify-between text-sm">
-														<span className="text-text-secondary">
-															{ban.champion}
-														</span>
-														<span className="text-text-muted">
-															{ban.frequency}x
-														</span>
-													</div>
-												)
-											)}
+											{favorite_bans.phase_1.slice(0, expandedBansPhase1 ? undefined : 5).map((ban, idx) => (
+												<div
+													key={idx}
+													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+												>
+													{ban.champion_icon && (
+														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+															<img
+																src={ban.champion_icon}
+																alt={ban.champion}
+																className="w-full h-full object-cover scale-110"
+																onError={(e) => e.target.style.display = 'none'}
+															/>
+														</div>
+													)}
+													<span className="flex-1 text-sm text-text-secondary">
+														{ban.champion}
+													</span>
+													<span className="text-sm text-text-muted font-medium">
+														{ban.frequency}x
+													</span>
+												</div>
+											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted">
-											Keine Daten
+										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+									)}
+								</div>
+
+								{/* Bans Against Us */}
+								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
+									<h5 className="text-sm font-semibold text-error mb-3">
+										Bans gegen uns
+									</h5>
+									{bans_against?.phase_1 && bans_against.phase_1.length > 0 ? (
+										<div className="space-y-2">
+											{bans_against.phase_1.slice(0, expandedBansPhase1 ? undefined : 5).map((ban, idx) => (
+												<div
+													key={idx}
+													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+												>
+													{ban.champion_icon && (
+														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+															<img
+																src={ban.champion_icon}
+																alt={ban.champion}
+																className="w-full h-full object-cover scale-110"
+																onError={(e) => e.target.style.display = 'none'}
+															/>
+														</div>
+													)}
+													<span className="flex-1 text-sm text-text-secondary">
+														{ban.champion}
+													</span>
+													<span className="text-sm text-text-muted font-medium">
+														{ban.frequency}x
+													</span>
+												</div>
+											))}
+										</div>
+									) : (
+										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+									)}
+								</div>
+							</div>
+						</div>
+
+						{/* Phase 2 */}
+						<div>
+							<div className="flex items-center justify-between mb-4">
+								<h4 className="font-semibold text-text-primary">
+									Rotation 2 (Letzte 2 Bans)
+								</h4>
+								<button
+									onClick={() => setExpandedBansPhase2(!expandedBansPhase2)}
+									className="flex items-center gap-2 px-3 py-1 bg-surface-hover rounded-lg text-sm text-primary hover:bg-surface-lighter transition-colors"
+								>
+									{expandedBansPhase2 ? (
+										<>
+											<ChevronDown className="w-4 h-4" />
+											Weniger anzeigen
+										</>
+									) : (
+										<>
+											<ChevronRight className="w-4 h-4" />
+											Alle anzeigen
+										</>
+									)}
+								</button>
+							</div>
+
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{/* Our Bans */}
+								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
+									<h5 className="text-sm font-semibold text-primary mb-3">
+										Unsere Lieblingsbans
+									</h5>
+									{favorite_bans?.phase_2 && favorite_bans.phase_2.length > 0 ? (
+										<div className="space-y-2">
+											{favorite_bans.phase_2.slice(0, expandedBansPhase2 ? undefined : 5).map((ban, idx) => (
+												<div
+													key={idx}
+													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+												>
+													{ban.champion_icon && (
+														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+															<img
+																src={ban.champion_icon}
+																alt={ban.champion}
+																className="w-full h-full object-cover scale-110"
+																onError={(e) => e.target.style.display = 'none'}
+															/>
+														</div>
+													)}
+													<span className="flex-1 text-sm text-text-secondary">
+														{ban.champion}
+													</span>
+													<span className="text-sm text-text-muted font-medium">
+														{ban.frequency}x
+													</span>
+												</div>
+											))}
+										</div>
+									) : (
+										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+									)}
+								</div>
+
+								{/* Bans Against Us */}
+								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
+									<h5 className="text-sm font-semibold text-error mb-3">
+										Bans gegen uns
+									</h5>
+									{bans_against?.phase_2 && bans_against.phase_2.length > 0 ? (
+										<div className="space-y-2">
+											{bans_against.phase_2.slice(0, expandedBansPhase2 ? undefined : 5).map((ban, idx) => (
+												<div
+													key={idx}
+													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+												>
+													{ban.champion_icon && (
+														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+															<img
+																src={ban.champion_icon}
+																alt={ban.champion}
+																className="w-full h-full object-cover scale-110"
+																onError={(e) => e.target.style.display = 'none'}
+															/>
+														</div>
+													)}
+													<span className="flex-1 text-sm text-text-secondary">
+														{ban.champion}
+													</span>
+													<span className="text-sm text-text-muted font-medium">
+														{ban.frequency}x
+													</span>
+												</div>
+											))}
+										</div>
+									) : (
+										<p className="text-sm text-text-muted text-center py-4">Keine Daten</p>
+									)}
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
+			</>
+			)}
+
+			{/* Player Champion Pools View */}
+			{activeView === 'players' && (
+				<div className="card">
+					<div className="flex items-center justify-between mb-6">
+						<div>
+							<h3 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
+								<Users className="w-5 h-5 text-primary" />
+								Spieler Champion Pools
+							</h3>
+							<p className="text-sm text-text-muted">
+								Zeigt die Champion-Statistiken aller Spieler im Roster
+							</p>
+						</div>
+
+						{/* View Mode Toggle */}
+						<div className="rounded-lg bg-slate-700/30 p-1 inline-flex gap-1">
+							<button
+								onClick={() => setPlayerViewMode('overview')}
+								className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 text-sm font-medium ${
+									playerViewMode === 'overview'
+										? 'bg-slate-600 text-white shadow-md'
+										: 'text-slate-400 hover:text-white'
+								}`}
+							>
+								<List className="w-4 h-4" />
+								Übersicht
+							</button>
+							<button
+								onClick={() => setPlayerViewMode('comparison')}
+								className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 text-sm font-medium ${
+									playerViewMode === 'comparison'
+										? 'bg-slate-600 text-white shadow-md'
+										: 'text-slate-400 hover:text-white'
+								}`}
+							>
+								<Columns className="w-4 h-4" />
+								Vergleich
+							</button>
+						</div>
+					</div>
+
+					{!playerPools || !playerPools.players || playerPools.players.length === 0 ? (
+						<p className="text-center py-8 text-text-muted">
+							Keine Spieler-Daten verfügbar
+						</p>
+					) : playerViewMode === 'overview' ? (
+						<div className="space-y-6">
+							{playerPools.players.map((player) => (
+								<div key={player.player_id} className="space-y-3">
+									{/* Player Header */}
+									<div className="flex items-center gap-3 pb-2 border-b border-border/50">
+										{/* Player Icon */}
+										<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
+											<img
+												src={getSummonerIconUrl(player.profile_icon_id)}
+												alt={player.player_name}
+												className="w-full h-full object-cover"
+												onError={handleSummonerIconError}
+											/>
+										</div>
+										<h4 className="text-lg font-bold text-text-primary">
+											{player.player_name}
+										</h4>
+										{player.role && player.role !== 'UNKNOWN' && (
+											<span className="px-3 py-1 bg-primary/10 text-primary text-xs font-semibold rounded">
+												{displayRole(player.role)}
+											</span>
+										)}
+										{player.champions && player.champions.length > 0 && (
+											<span className="text-sm text-text-muted">
+												{player.champions.length} Champions
+											</span>
+										)}
+									</div>
+
+									{/* Champion Table */}
+									{player.champions && player.champions.length > 0 ? (
+										<div className="overflow-x-auto">
+											<table className="w-full">
+												<thead>
+													<tr className="border-b border-border">
+														<th className="text-left py-2 px-3 text-text-muted font-medium text-sm">
+															Champion
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															Spiele
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															W-L
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															Winrate
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															KDA
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															CS/min
+														</th>
+													</tr>
+												</thead>
+												<tbody>
+													{player.champions.map((champ) => (
+														<tr
+															key={`${player.player_id}-${champ.champion_id}`}
+															className="border-b border-border/50 hover:bg-surface-hover transition-colors"
+														>
+															{/* Champion */}
+															<td className="py-3 px-3">
+																<div className="flex items-center gap-2">
+																	{champ.champion_icon && (
+																		<div className="w-8 h-8 rounded-full overflow-hidden">
+																			<img
+																				src={champ.champion_icon}
+																				alt={champ.champion}
+																				className="w-full h-full object-cover scale-110"
+																				onError={(e) => {
+																					e.target.style.display = 'none';
+																				}}
+																			/>
+																		</div>
+																	)}
+																	<span className="font-semibold text-text-primary">
+																		{champ.champion}
+																	</span>
+																</div>
+															</td>
+
+															{/* Games */}
+															<td className="py-3 px-3 text-center">
+																<span className="font-bold text-primary text-base">
+																	{champ.games}
+																</span>
+															</td>
+
+															{/* W-L */}
+															<td className="py-3 px-3 text-center text-text-secondary">
+																{champ.wins}-{champ.losses}
+															</td>
+
+															{/* Winrate */}
+															<td className="py-3 px-3 text-center">
+																<span
+																	className={`font-semibold ${
+																		champ.winrate >= 50
+																			? 'text-green-400/60'
+																			: 'text-red-400/60'
+																	}`}
+																>
+																	{champ.winrate}%
+																</span>
+															</td>
+
+															{/* KDA */}
+															<td className="py-3 px-3 text-center">
+																<span className="text-text-primary font-medium">
+																	{champ.kda}
+																</span>
+															</td>
+
+															{/* CS/min */}
+															<td className="py-3 px-3 text-center">
+																<span className="text-text-primary font-medium">
+																	{champ.cs_per_min}
+																</span>
+															</td>
+														</tr>
+													))}
+												</tbody>
+											</table>
+										</div>
+									) : (
+										<p className="text-sm text-text-muted text-center py-6 bg-surface-hover rounded">
+											Keine Champion-Daten verfügbar
 										</p>
 									)}
 								</div>
-							)
-						)}
-					</div>
+							))}
+						</div>
+					) : (
+						/* Comparison View - Players Side by Side */
+						<div className="overflow-x-auto pb-2">
+							<div className="flex gap-6 min-w-max pt-2">
+								{playerPools.players.map((player) => (
+									<div key={player.player_id} className="flex-1 min-w-[300px] max-w-[340px]">
+										{/* Player Header */}
+										<div className="sticky top-0 bg-slate-700/50 backdrop-blur rounded-t-xl p-4 border border-slate-600/50 border-b-0">
+											<div className="flex items-center gap-3 mb-2">
+												{/* Player Icon */}
+												<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
+													<img
+														src={getSummonerIconUrl(player.profile_icon_id)}
+														alt={player.player_name}
+														className="w-full h-full object-cover"
+														onError={handleSummonerIconError}
+													/>
+												</div>
+												<h4 className="text-base font-bold text-text-primary truncate flex-1">
+													{player.player_name}
+												</h4>
+											</div>
+											<div className="flex items-center gap-2">
+												{player.role && player.role !== 'UNKNOWN' && (
+													<span className="px-2.5 py-1 bg-primary/10 text-primary text-xs font-semibold rounded">
+														{displayRole(player.role)}
+													</span>
+												)}
+												{player.champions && player.champions.length > 0 && (
+													<span className="text-xs text-text-muted">
+														{player.champions.length} Champions
+													</span>
+												)}
+											</div>
+										</div>
+
+										{/* Champion List */}
+										<div className="bg-slate-800/40 rounded-b-xl border border-slate-600/50 border-t-0 max-h-[700px] overflow-y-auto pr-2">
+											{player.champions && player.champions.length > 0 ? (
+												<div className="divide-y divide-border/30 p-2">
+													{player.champions.map((champ) => (
+														<div
+															key={`${player.player_id}-${champ.champion_id}`}
+															className="p-3 hover:bg-surface-hover transition-colors rounded-lg"
+														>
+															<div className="flex items-center gap-3">
+																{champ.champion_icon && (
+																	<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+																		<img
+																			src={champ.champion_icon}
+																			alt={champ.champion}
+																			className="w-full h-full object-cover scale-110"
+																			onError={(e) => {
+																				e.target.style.display = 'none';
+																			}}
+																		/>
+																	</div>
+																)}
+																<div className="flex-1 min-w-0">
+																	<p className="font-semibold text-text-primary text-sm truncate">
+																		{champ.champion}
+																	</p>
+																	<div className="flex items-center gap-3 mt-1">
+																		<div className="flex items-center gap-1.5">
+																			<span className="text-lg font-bold text-cyan-400">
+																				{champ.games}
+																			</span>
+																			<span className="text-xs text-text-muted">
+																				Games
+																			</span>
+																		</div>
+																		<span
+																			className={`text-sm font-semibold ${
+																				champ.winrate >= 50
+																					? 'text-green-400/60'
+																					: 'text-red-400/60'
+																			}`}>
+																			{champ.winrate}%
+																		</span>
+																	</div>
+																</div>
+															</div>
+														</div>
+													))}
+												</div>
+											) : (
+												<p className="text-xs text-text-muted text-center py-8">
+													Keine Champion-Daten
+												</p>
+											)}
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					)}
 				</div>
 			)}
 		</div>

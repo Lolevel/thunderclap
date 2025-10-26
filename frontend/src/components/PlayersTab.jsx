@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { displayRole, sortByRole } from '../utils/roleMapping';
 import { openPlayerOpgg, openTeamOpgg } from '../utils/opggHelper';
+import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 import RoleIcon from './RoleIcon';
 
 const PlayersTab = ({
@@ -176,6 +177,16 @@ const PlayersTab = ({
 						{/* Role icon */}
 						<div className="flex-shrink-0">
 							<RoleIcon role={entry.role} size={20} />
+						</div>
+
+						{/* Player Icon */}
+						<div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
+							<img
+								src={getSummonerIconUrl(entry.player.profile_icon_id)}
+								alt={entry.player.summoner_name}
+								className="w-full h-full object-cover"
+								onError={handleSummonerIconError}
+							/>
 						</div>
 
 						{/* Player info */}

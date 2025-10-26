@@ -31,8 +31,36 @@ class Team(db.Model):
     def __repr__(self):
         return f'<Team {self.name}>'
 
+    def get_average_rank(self):
+        """Calculate average rank of all players in roster"""
+        from app.utils.rank_calculator import calculate_average_rank
+
+        # Get all active roster players
+        active_roster = [r for r in self.rosters if r.is_main_roster and not r.leave_date]
+
+        if not active_roster:
+            return None
+
+        # Build ranks list
+        ranks = []
+        for roster_entry in active_roster:
+            player = roster_entry.player
+            if player and player.soloq_tier:
+                ranks.append({
+                    'tier': player.soloq_tier,
+                    'division': player.soloq_division,
+                    'lp': player.soloq_lp or 0
+                })
+
+        if not ranks:
+            return None
+
+        return calculate_average_rank(ranks)
+
     def to_dict(self):
         """Convert model to dictionary"""
+        avg_rank = self.get_average_rank()
+
         return {
             'id': str(self.id),
             'name': self.name,
@@ -42,6 +70,8 @@ class Team(db.Model):
             'division': self.division,
             'current_split': self.current_split,
             'logo_url': self.logo_url,
+            'average_rank': avg_rank['display'] if avg_rank else None,
+            'average_rank_icon': avg_rank['icon_url'] if avg_rank else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
