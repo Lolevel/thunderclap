@@ -44,7 +44,7 @@ const Login = () => {
             <img
               src="/thunderclap-logo.png"
               alt="Thunderclap"
-              className="w-20 h-20"
+              className="w-20 h-20 rounded-md shadow-lg"
             />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
