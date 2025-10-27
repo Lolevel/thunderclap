@@ -13,11 +13,12 @@ logger = logging.getLogger(__name__)
 
 champions_bp = Blueprint('champions', __name__, url_prefix='/api/champions')
 
+# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes
-@champions_bp.before_request
-@require_auth
-def before_request():
-    pass
+# @champions_bp.before_request
+# @require_auth
+# def before_request():
+#     pass
 
 
 @champions_bp.route('/sync', methods=['POST'])

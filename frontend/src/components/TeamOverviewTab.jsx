@@ -1,44 +1,28 @@
-import { useEffect, useState } from 'react';
-import { Trophy, TrendingUp, Users, Target } from 'lucide-react';
-import api from '../config/api';
+import { Trophy, TrendingUp, Users, Target, AlertCircle } from 'lucide-react';
+import { useTeamOverview } from '../hooks/api/useTeam';
+import { RefreshIndicator } from './ui/RefreshIndicator';
+import { TeamOverviewSkeleton } from './ui/Skeleton';
 import { getChampionSplashUrl, handleSplashError } from '../utils/championHelper';
 
 const TeamOverviewTab = ({ teamId }) => {
-	const [overview, setOverview] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
+	// Use SWR hook for data fetching
+	const { overview, isLoading, isError, isValidating } = useTeamOverview(teamId);
 
-	useEffect(() => {
-		fetchOverview();
-	}, [teamId]);
-
-	const fetchOverview = async () => {
-		try {
-			setLoading(true);
-			const response = await api.get(`/teams/${teamId}/overview`);
-			setOverview(response.data);
-		} catch (err) {
-			console.error('Failed to fetch team overview:', err);
-			setError('Fehler beim Laden der Übersicht');
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	if (loading) {
-		return (
-			<div className="flex items-center justify-center py-12">
-				<div className="animate-pulse text-text-muted">
-					Lädt Übersicht...
-				</div>
-			</div>
-		);
+	// Show skeleton on initial load
+	if (isLoading) {
+		return <TeamOverviewSkeleton />;
 	}
 
-	if (error || !overview) {
+	// Show error state
+	if (isError || !overview) {
 		return (
 			<div className="card text-center py-12">
-				<p className="text-text-secondary">{error || 'Keine Daten verfügbar'}</p>
+				<div className="flex flex-col items-center gap-3">
+					<AlertCircle className="w-12 h-12 text-error" />
+					<p className="text-text-secondary">
+						{isError ? 'Fehler beim Laden der Übersicht' : 'Keine Daten verfügbar'}
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -46,7 +30,11 @@ const TeamOverviewTab = ({ teamId }) => {
 	const { pl_stats, top_5_champions, average_rank, average_rank_info, peak_rank_info, lowest_rank_info, player_count } = overview;
 
 	return (
-		<div className="space-y-6">
+		<>
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={isValidating} />
+
+			<div className="space-y-6">
 			{/* Prime League Stats */}
 			<div className="card">
 				<h2 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
@@ -286,6 +274,7 @@ const TeamOverviewTab = ({ teamId }) => {
 				)}
 			</div>
 		</div>
+		</>
 	);
 };
 

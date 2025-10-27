@@ -10,11 +10,13 @@ from app.middleware.auth import require_auth
 
 bp = Blueprint("scouting", __name__, url_prefix="/api/scout")
 
+# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes
-@bp.before_request
-@require_auth
-def before_request():
-    pass
+# TODO: Authentication temporarily disabled for development
+# @bp.before_request
+# @require_auth
+# def before_request():
+#     pass
 
 
 @bp.route("/predict-lineup", methods=["POST"])

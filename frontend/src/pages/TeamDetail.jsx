@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 import {
 	Users,
 	TrendingUp,
@@ -10,8 +11,18 @@ import {
 	History,
 	Trash2,
 	Clipboard,
+	AlertCircle,
 } from 'lucide-react';
-import api from '../config/api';
+import { useTeamRoster, useTeamOverview } from '../hooks/api/useTeam';
+import { useLineupPrediction } from '../hooks/api/useDraft';
+import {
+	useAddPlayer,
+	useRemovePlayer,
+	useSyncRoster,
+	useDeleteTeam,
+	useRefreshTeamData,
+} from '../hooks/api/useTeamMutations';
+import { cacheKeys } from '../lib/cacheKeys';
 import TeamOverviewTab from '../components/TeamOverviewTab';
 import ChampionPoolTab from '../components/ChampionPoolTab';
 import InDepthStatsTab from '../components/InDepthStatsTab';
@@ -19,74 +30,56 @@ import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
 import GamePrepTab from '../components/GamePrepTab';
 import RefreshProgressModal from '../components/RefreshProgressModal';
+import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { useToast } from '../components/ToastContainer';
 
 const TeamDetail = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const toast = useToast();
-	const [team, setTeam] = useState(null);
-	const [roster, setRoster] = useState([]);
-	const [stats, setStats] = useState(null);
+
+	// Fetch team basic info
+	const { data: team, error: teamError, isLoading: teamLoading } = useSWR(
+		id ? cacheKeys.team(id) : null
+	);
+
+	// Fetch roster with SWR
+	const { roster, isLoading: rosterLoading, isValidating: rosterValidating, refresh: refreshRoster } = useTeamRoster(id);
+
+	// Fetch lineup predictions
+	const { prediction: predictions } = useLineupPrediction(id);
+
+	// Prefetch data for all tabs (runs in background)
+	useSWR(id ? cacheKeys.teamOverview(id) : null); // Overview tab
+	useSWR(id ? cacheKeys.teamChampions(id) : null); // Champions tab
+	useSWR(id ? cacheKeys.teamDraftPatterns(id) : null); // Draft patterns
+	useSWR(id ? cacheKeys.teamStats(id) : null); // Stats tab
+	useSWR(id ? cacheKeys.teamMatches(id, 20) : null); // Match history
+
+	// Mutation hooks
+	const { addPlayer } = useAddPlayer(id);
+	const { removePlayer } = useRemovePlayer(id);
+	const { syncRoster } = useSyncRoster(id);
+	const { deleteTeam } = useDeleteTeam();
+	const { refreshTeamData } = useRefreshTeamData(id);
+
 	const [activeTab, setActiveTab] = useState('overview');
-	const [loading, setLoading] = useState(true);
 	const [refreshing, setRefreshing] = useState(false);
 	const [showProgressModal, setShowProgressModal] = useState(false);
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
-	const [predictions, setPredictions] = useState(null);
-
-	useEffect(() => {
-		fetchTeamData();
-		fetchPredictions();
-	}, [id]);
-
-	const fetchTeamData = async () => {
-		try {
-			const [teamRes, rosterRes] = await Promise.all([
-				api.get(`/teams/${id}`),
-				api.get(`/teams/${id}/roster`),
-			]);
-
-			setTeam(teamRes.data);
-			setRoster(rosterRes.data.roster || []);
-		} catch (error) {
-			console.error('Failed to fetch team data:', error);
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const fetchPredictions = async () => {
-		try {
-			const response = await api.get(`/teams/${id}/roster/predictions`);
-			setPredictions(response.data.predictions);
-		} catch (error) {
-			console.error('Failed to fetch predictions:', error);
-		}
-	};
 
 	const handleAddPlayer = async (opggUrl) => {
-		await api.post(`/teams/${id}/roster/add`, {
-			opgg_url: opggUrl,
-		});
-		await fetchTeamData();
+		await addPlayer(opggUrl);
 	};
 
 	const handleSyncRoster = async (opggUrl) => {
-		const response = await api.post(`/teams/${id}/sync-from-opgg`, {
-			opgg_url: opggUrl,
-		});
-		await fetchTeamData();
-		return response.data;
+		return await syncRoster(opggUrl);
 	};
 
 	const handleRemovePlayer = async (playerId, deleteFromDb = false) => {
-		await api.delete(
-			`/teams/${id}/roster/${playerId}?delete_player=${deleteFromDb}`
-		);
-		await fetchTeamData();
+		await removePlayer(playerId, deleteFromDb);
 	};
 
 	const handleRefreshData = () => {
@@ -104,8 +97,8 @@ const TeamDetail = () => {
 			8000
 		);
 
-		// Auto-refresh data
-		await fetchTeamData();
+		// Refresh all team data
+		await refreshTeamData();
 	};
 
 	const handleRefreshError = (errorMessage) => {
@@ -119,13 +112,11 @@ const TeamDetail = () => {
 	const handleDeleteTeam = async () => {
 		setDeletingTeam(true);
 		try {
-			const response = await api.delete(
-				`/teams/${id}?delete_players=${deletePlayersOption}`
-			);
+			const response = await deleteTeam(id, deletePlayersOption);
 			toast.success(
-				`Team "${response.data.team_name}" wurde gelöscht. ${
-					response.data.players_deleted > 0
-						? `${response.data.players_deleted} Spieler ebenfalls gelöscht.`
+				`Team "${response.team_name}" wurde gelöscht. ${
+					response.players_deleted > 0
+						? `${response.players_deleted} Spieler ebenfalls gelöscht.`
 						: 'Spieler blieben in der Datenbank.'
 				}`,
 				8000
@@ -140,7 +131,8 @@ const TeamDetail = () => {
 		}
 	};
 
-	if (loading) {
+	// Loading state
+	if (teamLoading || rosterLoading) {
 		return (
 			<div className="flex items-center justify-center flex-1">
 				<div className="animate-pulse text-slate-400">Lädt...</div>
@@ -148,10 +140,12 @@ const TeamDetail = () => {
 		);
 	}
 
-	if (!team) {
+	// Error state
+	if (teamError || !team) {
 		return (
 			<div className="p-6">
 				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
+					<AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
 					<p className="text-slate-400">Team nicht gefunden</p>
 				</div>
 			</div>
@@ -160,6 +154,9 @@ const TeamDetail = () => {
 
 	return (
 		<div className="p-6">
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={rosterValidating} />
+
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<Link
 					to="/teams"
@@ -253,7 +250,7 @@ const TeamDetail = () => {
 							roster={roster}
 							teamId={id}
 							predictions={predictions}
-							onRefresh={fetchTeamData}
+							onRefresh={refreshRoster}
 							onRemovePlayer={handleRemovePlayer}
 							onAddPlayer={handleAddPlayer}
 							onSyncRoster={handleSyncRoster}

@@ -1,28 +1,11 @@
-import { useEffect, useState } from 'react';
-import { FileText, Clock, Swords, Shield, Target, TrendingUp } from 'lucide-react';
-import api from '../config/api';
+import { FileText, Clock, Swords, Shield, Target, TrendingUp, AlertCircle } from 'lucide-react';
+import { useScoutingReport } from '../hooks/api/useTeam';
+import { RefreshIndicator } from './ui/RefreshIndicator';
+import { StatsCardSkeleton } from './ui/Skeleton';
 
 const InDepthStatsTab = ({ teamId }) => {
-	const [report, setReport] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
-
-	useEffect(() => {
-		fetchScoutingReport();
-	}, [teamId]);
-
-	const fetchScoutingReport = async () => {
-		try {
-			setLoading(true);
-			const response = await api.get(`/teams/${teamId}/scouting-report`);
-			setReport(response.data);
-		} catch (err) {
-			console.error('Failed to fetch in-depth stats:', err);
-			setError('Failed to load in-depth statistics');
-		} finally {
-			setLoading(false);
-		}
-	};
+	// Use SWR hook for data fetching
+	const { report, isLoading, isError, isValidating } = useScoutingReport(teamId);
 
 	const formatDuration = (seconds) => {
 		if (!seconds) return 'N/A';
@@ -31,20 +14,27 @@ const InDepthStatsTab = ({ teamId }) => {
 		return `${minutes}:${String(secs).padStart(2, '0')}`;
 	};
 
-	if (loading) {
+	// Show skeleton on initial load
+	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center py-12">
-				<div className="animate-pulse text-text-muted">
-					Loading In-Depth Stats...
-				</div>
+			<div className="space-y-6">
+				{[...Array(4)].map((_, i) => (
+					<StatsCardSkeleton key={i} />
+				))}
 			</div>
 		);
 	}
 
-	if (error || !report) {
+	// Show error state
+	if (isError || !report) {
 		return (
 			<div className="card text-center py-12">
-				<p className="text-text-secondary">{error || 'No data available'}</p>
+				<div className="flex flex-col items-center gap-3">
+					<AlertCircle className="w-12 h-12 text-error" />
+					<p className="text-text-secondary">
+						{isError ? 'Failed to load in-depth statistics' : 'No data available'}
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -75,7 +65,11 @@ const InDepthStatsTab = ({ teamId }) => {
 	}
 
 	return (
-		<div className="space-y-6">
+		<>
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={isValidating} />
+
+			<div className="space-y-6">
 			{/* Header */}
 			<div className="card bg-gradient-to-r from-accent/10 to-primary/10 border border-accent/20">
 				<div className="flex items-center gap-4">
@@ -298,6 +292,7 @@ const InDepthStatsTab = ({ teamId }) => {
 				</div>
 			</div>
 		</div>
+		</>
 	);
 };
 

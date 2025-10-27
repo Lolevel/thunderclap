@@ -8,3 +8,5 @@ außerdem soll die logik so sein, dass ein roster erst als ganzes gespeichert wi
 nimm dir random ingame namen von jungle monstern wie krug oder raptors um die rosters zu benennen. einfach als einfachere orientierung
 
 und achte immer darauf, dass bei model änderungen auch das schema angepasst wird
+
+adde in match history eine funktion, dass man zwischen match history (genau wie gerade schon vorhanden) und einer match history wo nur die namen der players angezeigt werden hin und her switchen kann. damit kann man besser nachvollziehen, wer in letzter zeit gespielt wird. gern auch eine möglichkeit geben, da wieder zum player zu verlinken und das icon mit einzubauen. aber sonst muss da keine info sein. nur matchhistory mit den playernamen der 5 spieler.

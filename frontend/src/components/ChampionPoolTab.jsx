@@ -1,24 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { Target, Ban, TrendingUp, Award, Users, List, Columns, ChevronDown, ChevronRight } from 'lucide-react';
-import api from '../config/api';
+import React, { useState } from 'react';
+import { Target, Ban, TrendingUp, Award, Users, List, Columns, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
+import { useDraftAnalysis, usePlayerChampionPools } from '../hooks/api/useTeam';
+import { RefreshIndicator } from './ui/RefreshIndicator';
+import { ChampionPoolSkeleton } from './ui/Skeleton';
 import { displayRole } from '../utils/roleMapping';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
 const ChampionPoolTab = ({ teamId, predictions }) => {
-	const [draftData, setDraftData] = useState(null);
-	const [playerPools, setPlayerPools] = useState(null);
-	const [loading, setLoading] = useState(true);
-	const [error, setError] = useState(null);
+	// Use SWR hooks for data fetching
+	const { draftData, isLoading: draftLoading, isError: draftError, isValidating: draftValidating } = useDraftAnalysis(teamId);
+	const { playerPools, isLoading: poolsLoading, isValidating: poolsValidating } = usePlayerChampionPools(teamId);
+
 	const [activeView, setActiveView] = useState('team'); // 'team' or 'players'
 	const [playerViewMode, setPlayerViewMode] = useState('overview'); // 'overview' or 'comparison'
 	const [expandedChampions, setExpandedChampions] = useState(new Set());
 	const [expandedBansPhase1, setExpandedBansPhase1] = useState(false);
 	const [expandedBansPhase2, setExpandedBansPhase2] = useState(false);
-
-	useEffect(() => {
-		fetchDraftAnalysis();
-		fetchPlayerPools();
-	}, [teamId]);
 
 	const toggleChampion = (championId) => {
 		setExpandedChampions(prev => {
@@ -32,44 +29,21 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 		});
 	};
 
-	const fetchDraftAnalysis = async () => {
-		try {
-			setLoading(true);
-			const response = await api.get(`/teams/${teamId}/draft-analysis`);
-			setDraftData(response.data);
-		} catch (err) {
-			console.error('Failed to fetch champion pool:', err);
-			setError('Failed to load champion pool');
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const fetchPlayerPools = async () => {
-		try {
-			const response = await api.get(`/teams/${teamId}/player-champion-pools`);
-			setPlayerPools(response.data);
-		} catch (err) {
-			console.error('Failed to fetch player champion pools:', err);
-		}
-	};
-
-	if (loading) {
-		return (
-			<div className="flex items-center justify-center py-12">
-				<div className="animate-pulse text-text-muted">
-					Loading Champion Pool...
-				</div>
-			</div>
-		);
+	// Show skeleton on initial load
+	if (draftLoading || poolsLoading) {
+		return <ChampionPoolSkeleton />;
 	}
 
-	if (error || !draftData) {
+	// Show error state
+	if (draftError || !draftData) {
 		return (
 			<div className="card text-center py-12">
-				<p className="text-text-secondary">
-					{error || 'No data available'}
-				</p>
+				<div className="flex flex-col items-center gap-3">
+					<AlertCircle className="w-12 h-12 text-error" />
+					<p className="text-text-secondary">
+						{draftError ? 'Failed to load champion pool' : 'No data available'}
+					</p>
+				</div>
 			</div>
 		);
 	}
@@ -84,7 +58,11 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 	} = draftData;
 
 	return (
-		<div className="space-y-6">
+		<>
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={draftValidating || poolsValidating} />
+
+			<div className="space-y-6">
 			{/* Header Info */}
 			<div className="card bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
 				<div className="flex items-center justify-between">
@@ -386,97 +364,129 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 						{/* Phase 1 */}
 						<div>
 							<div className="flex items-center justify-between mb-4">
-								<h4 className="font-semibold text-text-primary">
-									First Ban Phase (3 Bans)
+								<h4 className="font-semibold text-text-primary flex items-center gap-2">
+									<span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+										1
+									</span>
+									First Ban Phase
 								</h4>
-								<button
-									onClick={() => setExpandedBansPhase1(!expandedBansPhase1)}
-									className="flex items-center gap-2 px-3 py-1 bg-surface-hover rounded-lg text-sm text-primary hover:bg-surface-lighter transition-colors"
-								>
-									{expandedBansPhase1 ? (
-										<>
-											<ChevronDown className="w-4 h-4" />
-											Show Less
-										</>
-									) : (
-										<>
-											<ChevronRight className="w-4 h-4" />
-											Show All
-										</>
-									)}
-								</button>
+								{((favorite_bans?.phase_1 && favorite_bans.phase_1.length > 5) || (bans_against?.phase_1 && bans_against.phase_1.length > 5)) && (
+									<button
+										onClick={() => setExpandedBansPhase1(!expandedBansPhase1)}
+										className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary/10 to-accent/10 hover:from-primary/20 hover:to-accent/20 rounded-lg transition-all duration-300 border border-primary/20 hover:border-primary/40"
+									>
+										<span className="text-sm font-medium text-text-primary group-hover:text-primary transition-colors">
+											{expandedBansPhase1 ? 'Show Less' : 'Show All'}
+										</span>
+										{expandedBansPhase1 ? (
+											<ChevronDown className="w-4 h-4 text-primary" />
+										) : (
+											<ChevronRight className="w-4 h-4 text-primary" />
+										)}
+									</button>
+								)}
 							</div>
 
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 								{/* Our Bans */}
-								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
-									<h5 className="text-sm font-semibold text-primary mb-3">
-										Team Ban Priority
-									</h5>
+								<div>
+									<div className="flex items-center gap-2 mb-4">
+										<div className="w-1 h-5 bg-gradient-to-b from-primary to-cyan-500 rounded-full"></div>
+										<h5 className="text-sm font-semibold text-primary">
+											Team Ban Priority
+										</h5>
+									</div>
 									{favorite_bans?.phase_1 && favorite_bans.phase_1.length > 0 ? (
 										<div className="space-y-2">
 											{favorite_bans.phase_1.slice(0, expandedBansPhase1 ? undefined : 5).map((ban, idx) => (
 												<div
 													key={idx}
-													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+													className="group flex items-center gap-3 p-3 bg-gradient-to-r from-surface-hover to-surface-hover/50 rounded-lg border border-border/30 hover:border-primary/30 transition-all"
 												>
-													{ban.champion_icon && (
-														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-															<img
-																src={ban.champion_icon}
-																alt={ban.champion}
-																className="w-full h-full object-cover scale-110"
-																onError={(e) => e.target.style.display = 'none'}
-															/>
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														{ban.champion_icon && (
+															<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-border/50 group-hover:border-primary/50 transition-colors">
+																<img
+																	src={ban.champion_icon}
+																	alt={ban.champion}
+																	className="w-full h-full object-cover"
+																	onError={(e) => e.target.style.display = 'none'}
+																/>
+															</div>
+														)}
+														<div className="flex-1 min-w-0">
+															<p className="text-sm font-medium text-text-primary truncate">
+																{ban.champion}
+															</p>
+															<p className="text-xs text-text-muted">
+																Banned {ban.frequency} times
+															</p>
 														</div>
-													)}
-													<span className="flex-1 text-sm text-text-secondary">
-														{ban.champion}
-													</span>
-													<span className="text-sm text-text-muted font-medium">
-														{ban.frequency}x
-													</span>
+													</div>
+													<div className="flex items-center gap-2 flex-shrink-0">
+														<span className="text-lg font-bold text-primary">
+															{ban.frequency}
+														</span>
+													</div>
 												</div>
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">No data</p>
+										<div className="text-center py-8 bg-surface-hover/30 rounded-lg border border-border/30">
+											<Ban className="w-8 h-8 text-text-muted mx-auto mb-2 opacity-30" />
+											<p className="text-sm text-text-muted">No ban data</p>
+										</div>
 									)}
 								</div>
 
 								{/* Bans Against Us */}
-								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
-									<h5 className="text-sm font-semibold text-error mb-3">
-										Target Bans (Against Team)
-									</h5>
+								<div>
+									<div className="flex items-center gap-2 mb-4">
+										<div className="w-1 h-5 bg-gradient-to-b from-error to-red-600 rounded-full"></div>
+										<h5 className="text-sm font-semibold text-error">
+											Target Bans (Against Team)
+										</h5>
+									</div>
 									{bans_against?.phase_1 && bans_against.phase_1.length > 0 ? (
 										<div className="space-y-2">
 											{bans_against.phase_1.slice(0, expandedBansPhase1 ? undefined : 5).map((ban, idx) => (
 												<div
 													key={idx}
-													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+													className="group flex items-center gap-3 p-3 bg-gradient-to-r from-error/5 to-error/[0.02] rounded-lg border border-error/20 hover:border-error/40 transition-all"
 												>
-													{ban.champion_icon && (
-														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-															<img
-																src={ban.champion_icon}
-																alt={ban.champion}
-																className="w-full h-full object-cover scale-110"
-																onError={(e) => e.target.style.display = 'none'}
-															/>
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														{ban.champion_icon && (
+															<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-error/30 group-hover:border-error/50 transition-colors">
+																<img
+																	src={ban.champion_icon}
+																	alt={ban.champion}
+																	className="w-full h-full object-cover"
+																	onError={(e) => e.target.style.display = 'none'}
+																/>
+															</div>
+														)}
+														<div className="flex-1 min-w-0">
+															<p className="text-sm font-medium text-text-primary truncate">
+																{ban.champion}
+															</p>
+															<p className="text-xs text-text-muted">
+																Banned against us {ban.frequency} times
+															</p>
 														</div>
-													)}
-													<span className="flex-1 text-sm text-text-secondary">
-														{ban.champion}
-													</span>
-													<span className="text-sm text-text-muted font-medium">
-														{ban.frequency}x
-													</span>
+													</div>
+													<div className="flex items-center gap-2 flex-shrink-0">
+														<span className="text-lg font-bold text-error">
+															{ban.frequency}
+														</span>
+													</div>
 												</div>
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">No data</p>
+										<div className="text-center py-8 bg-error/5 rounded-lg border border-error/20">
+											<Ban className="w-8 h-8 text-error mx-auto mb-2 opacity-30" />
+											<p className="text-sm text-text-muted">No ban data</p>
+										</div>
 									)}
 								</div>
 							</div>
@@ -485,97 +495,129 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 						{/* Phase 2 */}
 						<div>
 							<div className="flex items-center justify-between mb-4">
-								<h4 className="font-semibold text-text-primary">
-									Second Ban Phase (2 Bans)
+								<h4 className="font-semibold text-text-primary flex items-center gap-2">
+									<span className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent text-sm font-bold">
+										2
+									</span>
+									Second Ban Phase
 								</h4>
-								<button
-									onClick={() => setExpandedBansPhase2(!expandedBansPhase2)}
-									className="flex items-center gap-2 px-3 py-1 bg-surface-hover rounded-lg text-sm text-primary hover:bg-surface-lighter transition-colors"
-								>
-									{expandedBansPhase2 ? (
-										<>
-											<ChevronDown className="w-4 h-4" />
-											Show Less
-										</>
-									) : (
-										<>
-											<ChevronRight className="w-4 h-4" />
-											Show All
-										</>
-									)}
-								</button>
+								{((favorite_bans?.phase_2 && favorite_bans.phase_2.length > 5) || (bans_against?.phase_2 && bans_against.phase_2.length > 5)) && (
+									<button
+										onClick={() => setExpandedBansPhase2(!expandedBansPhase2)}
+										className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-accent/10 to-purple-500/10 hover:from-accent/20 hover:to-purple-500/20 rounded-lg transition-all duration-300 border border-accent/20 hover:border-accent/40"
+									>
+										<span className="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+											{expandedBansPhase2 ? 'Show Less' : 'Show All'}
+										</span>
+										{expandedBansPhase2 ? (
+											<ChevronDown className="w-4 h-4 text-accent" />
+										) : (
+											<ChevronRight className="w-4 h-4 text-accent" />
+										)}
+									</button>
+								)}
 							</div>
 
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 								{/* Our Bans */}
-								<div className="p-4 bg-surface-hover/50 rounded-lg border border-border/50">
-									<h5 className="text-sm font-semibold text-primary mb-3">
-										Team Ban Priority
-									</h5>
+								<div>
+									<div className="flex items-center gap-2 mb-4">
+										<div className="w-1 h-5 bg-gradient-to-b from-primary to-cyan-500 rounded-full"></div>
+										<h5 className="text-sm font-semibold text-primary">
+											Team Ban Priority
+										</h5>
+									</div>
 									{favorite_bans?.phase_2 && favorite_bans.phase_2.length > 0 ? (
 										<div className="space-y-2">
 											{favorite_bans.phase_2.slice(0, expandedBansPhase2 ? undefined : 5).map((ban, idx) => (
 												<div
 													key={idx}
-													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+													className="group flex items-center gap-3 p-3 bg-gradient-to-r from-surface-hover to-surface-hover/50 rounded-lg border border-border/30 hover:border-primary/30 transition-all"
 												>
-													{ban.champion_icon && (
-														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-															<img
-																src={ban.champion_icon}
-																alt={ban.champion}
-																className="w-full h-full object-cover scale-110"
-																onError={(e) => e.target.style.display = 'none'}
-															/>
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														{ban.champion_icon && (
+															<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-border/50 group-hover:border-primary/50 transition-colors">
+																<img
+																	src={ban.champion_icon}
+																	alt={ban.champion}
+																	className="w-full h-full object-cover"
+																	onError={(e) => e.target.style.display = 'none'}
+																/>
+															</div>
+														)}
+														<div className="flex-1 min-w-0">
+															<p className="text-sm font-medium text-text-primary truncate">
+																{ban.champion}
+															</p>
+															<p className="text-xs text-text-muted">
+																Banned {ban.frequency} times
+															</p>
 														</div>
-													)}
-													<span className="flex-1 text-sm text-text-secondary">
-														{ban.champion}
-													</span>
-													<span className="text-sm text-text-muted font-medium">
-														{ban.frequency}x
-													</span>
+													</div>
+													<div className="flex items-center gap-2 flex-shrink-0">
+														<span className="text-lg font-bold text-primary">
+															{ban.frequency}
+														</span>
+													</div>
 												</div>
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">No data</p>
+										<div className="text-center py-8 bg-surface-hover/30 rounded-lg border border-border/30">
+											<Ban className="w-8 h-8 text-text-muted mx-auto mb-2 opacity-30" />
+											<p className="text-sm text-text-muted">No ban data</p>
+										</div>
 									)}
 								</div>
 
 								{/* Bans Against Us */}
-								<div className="p-4 bg-error/5 rounded-lg border border-error/20">
-									<h5 className="text-sm font-semibold text-error mb-3">
-										Target Bans (Against Team)
-									</h5>
+								<div>
+									<div className="flex items-center gap-2 mb-4">
+										<div className="w-1 h-5 bg-gradient-to-b from-error to-red-600 rounded-full"></div>
+										<h5 className="text-sm font-semibold text-error">
+											Target Bans (Against Team)
+										</h5>
+									</div>
 									{bans_against?.phase_2 && bans_against.phase_2.length > 0 ? (
 										<div className="space-y-2">
 											{bans_against.phase_2.slice(0, expandedBansPhase2 ? undefined : 5).map((ban, idx) => (
 												<div
 													key={idx}
-													className="flex items-center gap-3 p-2 bg-surface/40 rounded hover:bg-surface transition-colors"
+													className="group flex items-center gap-3 p-3 bg-gradient-to-r from-error/5 to-error/[0.02] rounded-lg border border-error/20 hover:border-error/40 transition-all"
 												>
-													{ban.champion_icon && (
-														<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
-															<img
-																src={ban.champion_icon}
-																alt={ban.champion}
-																className="w-full h-full object-cover scale-110"
-																onError={(e) => e.target.style.display = 'none'}
-															/>
+													<div className="flex items-center gap-3 flex-1 min-w-0">
+														{ban.champion_icon && (
+															<div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-error/30 group-hover:border-error/50 transition-colors">
+																<img
+																	src={ban.champion_icon}
+																	alt={ban.champion}
+																	className="w-full h-full object-cover"
+																	onError={(e) => e.target.style.display = 'none'}
+																/>
+															</div>
+														)}
+														<div className="flex-1 min-w-0">
+															<p className="text-sm font-medium text-text-primary truncate">
+																{ban.champion}
+															</p>
+															<p className="text-xs text-text-muted">
+																Banned against us {ban.frequency} times
+															</p>
 														</div>
-													)}
-													<span className="flex-1 text-sm text-text-secondary">
-														{ban.champion}
-													</span>
-													<span className="text-sm text-text-muted font-medium">
-														{ban.frequency}x
-													</span>
+													</div>
+													<div className="flex items-center gap-2 flex-shrink-0">
+														<span className="text-lg font-bold text-error">
+															{ban.frequency}
+														</span>
+													</div>
 												</div>
 											))}
 										</div>
 									) : (
-										<p className="text-sm text-text-muted text-center py-4">No data</p>
+										<div className="text-center py-8 bg-error/5 rounded-lg border border-error/20">
+											<Ban className="w-8 h-8 text-error mx-auto mb-2 opacity-30" />
+											<p className="text-sm text-text-muted">No ban data</p>
+										</div>
 									)}
 								</div>
 							</div>
@@ -919,6 +961,7 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 				</div>
 			)}
 		</div>
+		</>
 	);
 };
 

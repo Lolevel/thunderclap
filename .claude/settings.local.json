@@ -25,7 +25,12 @@
       "Bash(echo:*)",
       "Bash(head:*)",
       "Bash(done)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(for file in players.py scouting.py stats.py teams.py)",
+      "Bash(python3:*)",
+      "Bash(for file in scouting.py stats.py teams.py)"
     ],
     "deny": [],
     "ask": []

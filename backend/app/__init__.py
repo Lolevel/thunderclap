@@ -33,7 +33,16 @@ def create_app(config_name='development'):
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
-    CORS(app)
+
+    # Configure CORS - allow all origins and methods for development
+    # TODO: Restrict origins in production
+    CORS(app,
+         origins=["http://localhost:5173", "http://localhost:5174"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization"],
+         supports_credentials=True,
+         send_wildcard=False,
+         automatic_options=True)
 
     # Register blueprints
     from app.routes import teams, players, scouting, matches, stats, analytics, champions, auth

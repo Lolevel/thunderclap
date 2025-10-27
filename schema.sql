@@ -18,6 +18,7 @@ CREATE TABLE teams (
     division VARCHAR(50),
     current_split VARCHAR(20),
     logo_url TEXT,
+    locked_roster JSONB,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -380,6 +381,22 @@ CREATE TABLE scouting_reports (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Draft scenarios
+CREATE TABLE draft_scenarios (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    scenario_name VARCHAR(255) DEFAULT 'Scenario 1',
+    side VARCHAR(10) NOT NULL,
+    roster JSONB,
+    bans JSONB,
+    picks JSONB,
+    notes TEXT,
+    is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- ============================================================
 -- AUTHENTICATION TABLES
 -- ============================================================
@@ -430,3 +447,7 @@ CREATE INDEX idx_match_timeline_match ON match_timeline_data(match_id);
 -- Predictions & Reports
 CREATE INDEX idx_lineup_predictions_team ON lineup_predictions(team_id, match_date DESC);
 CREATE INDEX idx_scouting_reports_opponent ON scouting_reports(opponent_team_id, match_date DESC);
+
+-- Draft scenarios
+CREATE INDEX idx_draft_scenarios_team ON draft_scenarios(team_id, side, display_order);
+CREATE INDEX idx_draft_scenarios_active ON draft_scenarios(team_id, is_active) WHERE is_active = true;

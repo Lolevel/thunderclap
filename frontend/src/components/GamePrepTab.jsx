@@ -11,103 +11,118 @@ import {
 	Lock,
 	Unlock,
 	Users,
-	ChevronDown
+	ChevronDown,
+	AlertCircle
 } from 'lucide-react';
-import api from '../config/api';
+import { useTeamRoster, useRosterPredictions } from '../hooks/api/useTeam';
+import { useDraftScenarios, useSaveDraftScenario, useDeleteDraftScenario, useUpdateRoster } from '../hooks/api/useDraft';
+import { RefreshIndicator } from './ui/RefreshIndicator';
 import ChampionInput from './ChampionInput';
 import RoleIcon from './RoleIcon';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
+// Jungle monster names for roster naming
+const JUNGLE_MONSTERS = [
+	'Gromp', 'Krug', 'Raptors', 'Wolves', 'Scuttle',
+	'Blue Buff', 'Red Buff', 'Baron', 'Dragon', 'Herald'
+];
+
 const GamePrepTab = ({ teamId }) => {
+	// Use SWR hooks for data fetching
+	const { roster: rosterData, isLoading: rosterLoading, isValidating: rosterValidating } = useTeamRoster(teamId);
+	const { predictions: predictionsData, isLoading: predictionsLoading } = useRosterPredictions(teamId);
+	const {
+		blueScenarios: blueScenariosData,
+		redScenarios: redScenariosData,
+		lockedRoster: lockedRosterData,
+		isLoading: scenariosLoading,
+		isValidating: scenariosValidating
+	} = useDraftScenarios(teamId);
+
+	// Mutation hooks
+	const { saveDraftScenario } = useSaveDraftScenario(teamId);
+	const { deleteDraftScenario } = useDeleteDraftScenario(teamId);
+	const { updateRoster } = useUpdateRoster(teamId);
+
 	const [activeSide, setActiveSide] = useState('blue'); // 'blue' or 'red'
-	const [blueScenarios, setBlueScenarios] = useState([]);
-	const [redScenarios, setRedScenarios] = useState([]);
 	const [selectedScenario, setSelectedScenario] = useState(null);
-	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [lastSaved, setLastSaved] = useState(null);
 	const [autoSaveTimer, setAutoSaveTimer] = useState(null);
 
 	// Roster management
-	const [roster, setRoster] = useState([]);
-	const [predictions, setPredictions] = useState(null);
 	const [currentRoster, setCurrentRoster] = useState([]);
-	const [lockedRoster, setLockedRoster] = useState(null);
 	const [openDropdown, setOpenDropdown] = useState(null); // Track which role dropdown is open
-	const dropdownRef = useRef(null);
+	const dropdownContainerRef = useRef(null);
 
+	// Extract data from SWR hooks
+	const roster = rosterData || [];
+	const predictions = predictionsData;
+	const blueScenarios = blueScenariosData;
+	const redScenarios = redScenariosData;
+	const lockedRoster = lockedRosterData;
+
+	// Initialize roster and scenarios when data is loaded
 	useEffect(() => {
-		loadRosterAndPredictions();
-		loadScenarios();
-	}, [teamId]);
+		// Set predicted roster as default if available
+		if (predictions && predictions.length > 0 && roster.length > 0) {
+			const predictedLineup = predictions[0].predicted_lineup;
+			const defaultRoster = Object.entries(predictedLineup).map(([role, playerData]) => {
+				// Find the roster entry to get profile_icon_id
+				const rosterEntry = roster.find(r => r.player_id === playerData.player_id);
+				return {
+					player_id: playerData.player_id,
+					summoner_name: playerData.player_name,
+					role: role,
+					profile_icon_id: rosterEntry?.player?.profile_icon_id
+				};
+			});
+			if (currentRoster.length === 0) {
+				setCurrentRoster(defaultRoster);
+			}
+		}
+	}, [predictions, roster]);
+
+	// Auto-select first scenario when scenarios are loaded
+	useEffect(() => {
+		const scenarios = activeSide === 'blue' ? blueScenarios : redScenarios;
+		if (scenarios && scenarios.length > 0 && !selectedScenario) {
+			setSelectedScenario(scenarios[0]);
+			// Update current roster from selected scenario
+			if (scenarios[0].roster && scenarios[0].roster.length > 0) {
+				// Enrich roster with profile_icon_id from full roster data
+				const enrichedRoster = scenarios[0].roster.map(rosterPlayer => {
+					const fullPlayer = roster.find(r => r.player_id === rosterPlayer.player_id);
+					return {
+						...rosterPlayer,
+						profile_icon_id: fullPlayer?.player?.profile_icon_id || rosterPlayer.profile_icon_id
+					};
+				});
+				setCurrentRoster(enrichedRoster);
+			}
+		}
+	}, [blueScenarios, redScenarios, activeSide, roster]);
 
 	// Close dropdown when clicking outside
 	useEffect(() => {
 		const handleClickOutside = (event) => {
-			if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+			if (dropdownContainerRef.current && !dropdownContainerRef.current.contains(event.target)) {
 				setOpenDropdown(null);
 			}
 		};
 
-		document.addEventListener('mousedown', handleClickOutside);
-		return () => document.removeEventListener('mousedown', handleClickOutside);
-	}, []);
-
-	const loadRosterAndPredictions = async () => {
-		try {
-			const [rosterRes, predictionRes] = await Promise.all([
-				api.get(`/teams/${teamId}/roster`),
-				api.get(`/teams/${teamId}/roster/predictions`)
-			]);
-
-			setRoster(rosterRes.data.roster || []);
-			setPredictions(predictionRes.data.predictions);
-
-			// Set predicted roster as default if available
-			if (predictionRes.data.predictions && predictionRes.data.predictions.length > 0) {
-				const predictedLineup = predictionRes.data.predictions[0].predicted_lineup;
-				const defaultRoster = Object.entries(predictedLineup).map(([role, playerData]) => ({
-					player_id: playerData.player_id,
-					summoner_name: playerData.player_name,
-					role: role
-				}));
-				setCurrentRoster(defaultRoster);
-			}
-		} catch (error) {
-			console.error('Failed to load roster and predictions:', error);
+		if (openDropdown) {
+			document.addEventListener('mousedown', handleClickOutside);
+			return () => document.removeEventListener('mousedown', handleClickOutside);
 		}
-	};
-
-	const loadScenarios = async () => {
-		try {
-			setLoading(true);
-			const response = await api.get(`/teams/${teamId}/draft-scenarios`);
-			setBlueScenarios(response.data.blue_scenarios || []);
-			setRedScenarios(response.data.red_scenarios || []);
-			setLockedRoster(response.data.locked_roster || null);
-
-			// Auto-select first scenario of active side
-			const scenarios = activeSide === 'blue' ? response.data.blue_scenarios : response.data.red_scenarios;
-			if (scenarios && scenarios.length > 0) {
-				setSelectedScenario(scenarios[0]);
-				// Update current roster from selected scenario
-				if (scenarios[0].roster && scenarios[0].roster.length > 0) {
-					setCurrentRoster(scenarios[0].roster);
-				}
-			}
-		} catch (error) {
-			console.error('Failed to load draft scenarios:', error);
-		} finally {
-			setLoading(false);
-		}
-	};
+	}, [openDropdown]);
 
 	const createNewScenario = async () => {
 		try {
 			const scenarios = activeSide === 'blue' ? blueScenarios : redScenarios;
 			const scenarioName = `Scenario ${scenarios.length + 1}`;
 
-			const response = await api.post(`/teams/${teamId}/draft-scenarios`, {
+			const newScenario = await saveDraftScenario({
 				scenario_name: scenarioName,
 				side: activeSide,
 				roster: currentRoster,
@@ -116,35 +131,22 @@ const GamePrepTab = ({ teamId }) => {
 				notes: ''
 			});
 
-			const newScenario = response.data;
-
-			if (activeSide === 'blue') {
-				setBlueScenarios([...blueScenarios, newScenario]);
-			} else {
-				setRedScenarios([...redScenarios, newScenario]);
-			}
-
 			setSelectedScenario(newScenario);
 		} catch (error) {
 			console.error('Failed to create scenario:', error);
 		}
 	};
 
-	const deleteScenario = async (scenarioId) => {
+	const handleDeleteScenario = async (scenarioId) => {
 		if (!confirm('Are you sure you want to delete this scenario?')) return;
 
 		try {
-			await api.delete(`/teams/${teamId}/draft-scenarios/${scenarioId}`);
+			await deleteDraftScenario(scenarioId, activeSide);
 
-			if (activeSide === 'blue') {
-				const updated = blueScenarios.filter(s => s.id !== scenarioId);
-				setBlueScenarios(updated);
-				setSelectedScenario(updated.length > 0 ? updated[0] : null);
-			} else {
-				const updated = redScenarios.filter(s => s.id !== scenarioId);
-				setRedScenarios(updated);
-				setSelectedScenario(updated.length > 0 ? updated[0] : null);
-			}
+			// Select another scenario after deletion
+			const scenarios = activeSide === 'blue' ? blueScenarios : redScenarios;
+			const updated = scenarios.filter(s => s.id !== scenarioId);
+			setSelectedScenario(updated.length > 0 ? updated[0] : null);
 		} catch (error) {
 			console.error('Failed to delete scenario:', error);
 		}
@@ -155,22 +157,17 @@ const GamePrepTab = ({ teamId }) => {
 
 		try {
 			setSaving(true);
-			const response = await api.put(`/teams/${teamId}/draft-scenarios/${selectedScenario.id}`, {
+			const updatedScenario = await saveDraftScenario({
+				id: selectedScenario.id,
 				scenario_name: selectedScenario.scenario_name,
+				side: selectedScenario.side,
 				roster: currentRoster,
 				bans: selectedScenario.bans,
 				picks: selectedScenario.picks,
 				notes: selectedScenario.notes
 			});
 
-			setLastSaved(new Date(response.data.updated_at));
-
-			// Update in list
-			if (activeSide === 'blue') {
-				setBlueScenarios(blueScenarios.map(s => s.id === selectedScenario.id ? response.data : s));
-			} else {
-				setRedScenarios(redScenarios.map(s => s.id === selectedScenario.id ? response.data : s));
-			}
+			setLastSaved(new Date(updatedScenario.updated_at));
 		} catch (error) {
 			console.error('Failed to save scenario:', error);
 		} finally {
@@ -178,8 +175,13 @@ const GamePrepTab = ({ teamId }) => {
 		}
 	};
 
-	// Auto-save with 2 second debounce
+	// Auto-save with 2 second debounce - only save if roster has 5 players
 	const triggerAutoSave = () => {
+		// Only auto-save if roster is complete (5 players) or if roster is empty (for initial scenarios)
+		if (currentRoster.length !== 5 && currentRoster.length !== 0) {
+			return;
+		}
+
 		if (autoSaveTimer) {
 			clearTimeout(autoSaveTimer);
 		}
@@ -192,7 +194,7 @@ const GamePrepTab = ({ teamId }) => {
 	};
 
 	useEffect(() => {
-		if (selectedScenario && !loading) {
+		if (selectedScenario && !scenariosLoading) {
 			triggerAutoSave();
 		}
 
@@ -205,11 +207,7 @@ const GamePrepTab = ({ teamId }) => {
 
 	const lockRoster = async () => {
 		try {
-			await api.post(`/teams/${teamId}/roster/lock`, {
-				roster: currentRoster
-			});
-			setLockedRoster(currentRoster);
-			await loadScenarios();
+			await updateRoster(currentRoster);
 		} catch (error) {
 			console.error('Failed to lock roster:', error);
 		}
@@ -217,9 +215,7 @@ const GamePrepTab = ({ teamId }) => {
 
 	const unlockRoster = async () => {
 		try {
-			await api.delete(`/teams/${teamId}/roster/lock`);
-			setLockedRoster(null);
-			await loadScenarios();
+			await updateRoster(null);
 		} catch (error) {
 			console.error('Failed to unlock roster:', error);
 		}
@@ -285,7 +281,10 @@ const GamePrepTab = ({ teamId }) => {
 			}
 		});
 
-		return Array.from(rosterMap.values());
+		return Array.from(rosterMap.values()).map((config, idx) => ({
+			...config,
+			name: JUNGLE_MONSTERS[idx % JUNGLE_MONSTERS.length]
+		}));
 	};
 
 	const isSameRoster = (roster1, roster2) => {
@@ -319,7 +318,8 @@ const GamePrepTab = ({ teamId }) => {
 		updateScenarioField('picks', newPicks);
 	};
 
-	if (loading) {
+	// Show loading skeleton
+	if (rosterLoading || predictionsLoading || scenariosLoading) {
 		return (
 			<div className="flex items-center justify-center py-12">
 				<div className="animate-pulse text-text-muted">
@@ -332,7 +332,11 @@ const GamePrepTab = ({ teamId }) => {
 	const currentScenarios = activeSide === 'blue' ? blueScenarios : redScenarios;
 
 	return (
-		<div className="space-y-6">
+		<>
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={rosterValidating || scenariosValidating} />
+
+			<div className="space-y-6">
 			{/* Header */}
 			<div className="card bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
 				<div className="flex items-center justify-between">
@@ -364,7 +368,7 @@ const GamePrepTab = ({ teamId }) => {
 			</div>
 
 			{/* Roster Selection */}
-			<div className="card">
+			<div className={`card ${openDropdown ? 'relative z-50 overflow-visible' : ''}`}>
 				<div className="flex items-center justify-between mb-4">
 					<div className="flex items-center gap-3">
 						<Users className="w-5 h-5 text-primary" />
@@ -408,14 +412,14 @@ const GamePrepTab = ({ teamId }) => {
 					</div>
 				)}
 
-				<div className="grid grid-cols-5 gap-3">
+				<div className={`grid grid-cols-5 gap-3 ${openDropdown ? 'relative z-[60]' : ''}`} ref={dropdownContainerRef}>
 					{['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'].map((role) => {
 						const player = getRosterPlayerForRole(role);
 						const availablePlayers = getAvailablePlayersForRole(role);
 						const isOpen = openDropdown === role;
 
 						return (
-							<div key={role} className="relative" ref={isOpen ? dropdownRef : null}>
+							<div key={role} className="relative z-10">
 								<button
 									onClick={() => !lockedRoster && setOpenDropdown(isOpen ? null : role)}
 									disabled={lockedRoster !== null}
@@ -467,7 +471,7 @@ const GamePrepTab = ({ teamId }) => {
 
 								{/* Dropdown Menu */}
 								{isOpen && !lockedRoster && (
-									<div className="absolute z-[100] w-full mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+									<div className="absolute left-0 top-full mt-2 w-full z-[100] bg-slate-800 border border-slate-700 rounded-lg shadow-2xl max-h-64 overflow-y-auto">
 										{availablePlayers.map((p) => (
 											<button
 												key={p.player_id}
@@ -524,7 +528,7 @@ const GamePrepTab = ({ teamId }) => {
 								>
 									<div className="flex items-center justify-between mb-2">
 										<span className="text-xs font-medium text-slate-400">
-											Roster {idx + 1}
+											{rosterConfig.name}
 										</span>
 										<span className="text-xs px-2 py-1 rounded bg-slate-700/50 text-slate-300">
 											{rosterConfig.scenarioCount} scenario{rosterConfig.scenarioCount !== 1 ? 's' : ''}
@@ -635,7 +639,7 @@ const GamePrepTab = ({ teamId }) => {
 											<button
 												onClick={(e) => {
 													e.stopPropagation();
-													deleteScenario(scenario.id);
+													handleDeleteScenario(scenario.id);
 												}}
 												className="p-1 text-error/60 hover:text-error hover:bg-error/10 rounded transition-colors"
 											>
@@ -752,6 +756,7 @@ const GamePrepTab = ({ teamId }) => {
 				)}
 			</div>
 		</div>
+		</>
 	);
 };
 

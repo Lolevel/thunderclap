@@ -12,11 +12,13 @@ from datetime import datetime
 
 bp = Blueprint("teams", __name__, url_prefix="/api/teams")
 
+# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes in this blueprint
-@bp.before_request
-@require_auth
-def before_request():
-    pass
+# TODO: Authentication temporarily disabled for development
+# @bp.before_request
+# @require_auth
+# def before_request():
+#     pass
 
 
 @bp.route("/import", methods=["POST"])

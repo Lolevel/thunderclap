@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users, List, LayoutGrid } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import api from '../config/api';
 import { displayRole } from '../utils/roleMapping';
 import { getItemIconUrl, filterEmptyItems, handleItemError } from '../utils/itemHelper';
+import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
 /**
  * Reusable Match History Component for both Team and Player views
@@ -15,6 +17,7 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedMatches, setExpandedMatches] = useState(new Set());
   const [matchesLimit, setMatchesLimit] = useState(entityType === 'team' ? 50 : 20);
+  const [viewMode, setViewMode] = useState('detailed'); // 'detailed' or 'simplified'
 
   useEffect(() => {
     fetchMatches();
@@ -115,6 +118,34 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
         <h2 className="text-xl font-bold text-text-primary">
           Match History ({matches.length} Games)
         </h2>
+
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-2 bg-surface/40 p-1 rounded-lg border border-border/50">
+          <button
+            onClick={() => setViewMode('detailed')}
+            className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${
+              viewMode === 'detailed'
+                ? 'bg-primary text-white'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+            title="Detailed View"
+          >
+            <LayoutGrid className="w-4 h-4" />
+            Detailed
+          </button>
+          <button
+            onClick={() => setViewMode('simplified')}
+            className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${
+              viewMode === 'simplified'
+                ? 'bg-primary text-white'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+            title="Simplified View (Players Only)"
+          >
+            <List className="w-4 h-4" />
+            Players
+          </button>
+        </div>
       </div>
 
       {matches.map((match) => {
@@ -129,6 +160,77 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
         const ourTeam = match.our_team || [];
         const weAreBlue = ourTeam.length > 0 && ourTeam[0].riot_team_id === 100;
 
+        // Simplified view - only show player names
+        if (viewMode === 'simplified') {
+          return (
+            <div
+              key={match.match_id}
+              className={`card overflow-hidden border-l-4 ${
+                match.win ? 'border-success' : 'border-error'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                {/* Win/Loss Badge */}
+                <div
+                  className={`w-16 px-2 py-2 rounded-lg font-bold text-center text-sm flex-shrink-0 ${
+                    match.win
+                      ? 'bg-success/20 text-success'
+                      : 'bg-error/20 text-error'
+                  }`}
+                >
+                  {match.win ? 'W' : 'L'}
+                </div>
+
+                {/* Player Names with Champion Icons - 5 players in one row */}
+                <div className="flex-1 flex items-center gap-2">
+                  {ourTeam
+                    .filter((p) => entityType === 'team' ? p.is_team_member : true)
+                    .slice(0, 5)
+                    .map((player, idx) => {
+                      // Remove Riot tag (#EUW1, #NA1, etc.) from summoner name
+                      const displayName = player.summoner_name.split('#')[0];
+
+                      return (
+                        <Link
+                          key={`${match.match_id}-player-${idx}`}
+                          to={`/players/${player.player_id}`}
+                          className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 bg-surface-hover hover:bg-surface rounded-lg transition-all group"
+                          title={`${player.summoner_name} - ${player.champion_name}`}
+                        >
+                          {/* Champion Icon */}
+                          <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0">
+                            {getChampionUrl(player) && (
+                              <img
+                                src={getChampionUrl(player)}
+                                alt={player.champion_name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* Player Name (without tag) */}
+                          <span className="text-sm font-medium text-text-primary group-hover:text-primary transition-colors truncate">
+                            {displayName}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                </div>
+
+                {/* Match Date - Right side */}
+                <div className="flex items-center gap-2 text-sm text-text-secondary flex-shrink-0">
+                  <Calendar className="w-4 h-4" />
+                  <span className="whitespace-nowrap">{formatDate(match.game_creation)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // Detailed view (original)
         return (
           <div
             key={match.match_id}

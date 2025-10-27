@@ -1,36 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Users, ChevronRight, Search } from 'lucide-react';
-import api from "../config/api";
+import { Users, ChevronRight, Search, AlertCircle } from 'lucide-react';
+import { useTeams } from '../hooks/api/useTeam';
+import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 
 const Teams = () => {
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Use SWR hook for data fetching
+  const { teams, isLoading, isError, isValidating } = useTeams();
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    fetchTeams();
-  }, []);
-
-  const fetchTeams = async () => {
-    try {
-      const response = await api.get('/teams');
-      setTeams(response.data.teams || []);
-    } catch (error) {
-      console.error("Failed to fetch teams:", error);
-      setTeams([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredTeams = teams.filter(
+  const filteredTeams = (teams || []).filter(
     (team) =>
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (team.tag && team.tag.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  if (loading) {
+  // Show loading skeleton
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center flex-1">
         <div className="animate-pulse text-slate-400">Lädt...</div>
@@ -38,8 +24,23 @@ const Teams = () => {
     );
   }
 
+  // Show error state
+  if (isError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
+          <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
+          <p className="text-slate-400">Failed to load teams</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
+      {/* Background refresh indicator */}
+      <RefreshIndicator isValidating={isValidating} />
+
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
