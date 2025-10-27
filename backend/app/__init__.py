@@ -1,6 +1,7 @@
 """
 Flask application factory
 """
+import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -34,13 +35,18 @@ def create_app(config_name='development'):
     db.init_app(app)
     migrate.init_app(app, db)
 
-    # Configure CORS - allow all origins and methods for development
-    # TODO: Restrict origins in production
+    # Configure CORS - read origins from environment variable
+    # CORS_ORIGINS should be a comma-separated list of allowed origins
+    cors_origins_str = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://localhost:5174')
+    cors_origins = [origin.strip() for origin in cors_origins_str.split(',')]
+
+    print(f"[CORS] Configured origins: {cors_origins}")
+
     CORS(app,
-         origins=["http://localhost:5173", "http://localhost:5174"],
+         origins=cors_origins,
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          allow_headers=["Content-Type", "Authorization"],
-         supports_credentials=True,
+         supports_credentials=False,
          send_wildcard=False,
          automatic_options=True)
 

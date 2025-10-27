@@ -2,6 +2,27 @@ import useSWR from 'swr';
 import { cacheKeys } from '../../lib/cacheKeys';
 
 /**
+ * Fetch all players
+ * @returns {object} { players, isLoading, isError, isValidating, refresh }
+ */
+export function usePlayers() {
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    '/players',
+    {
+      refreshInterval: 300000, // 5 minutes
+    }
+  );
+
+  return {
+    players: data?.players || [],
+    isLoading,
+    isError: error,
+    isValidating,
+    refresh: mutate,
+  };
+}
+
+/**
  * Fetch player champion pool
  * @param {string} playerId - Player UUID
  * @param {string} type - 'tournament' or 'soloqueue'

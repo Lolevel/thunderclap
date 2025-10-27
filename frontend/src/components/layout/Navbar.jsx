@@ -2,16 +2,21 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, Users, User, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ImportTeamModal from '../ImportTeamModal';
-import api from '../../config/api';
+import { useTeams } from '../../hooks/api/useTeam';
+import { usePlayers } from '../../hooks/api/usePlayer';
 
 const Navbar = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState({ teams: [], players: [] });
   const [showResults, setShowResults] = useState(false);
-  const [loading, setLoading] = useState(false);
   const searchRef = useRef(null);
   const navigate = useNavigate();
+
+  // Fetch data with SWR (cached globally)
+  const { teams, isLoading: teamsLoading } = useTeams();
+  const { players, isLoading: playersLoading } = usePlayers();
+  const loading = teamsLoading || playersLoading;
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -26,7 +31,7 @@ const Navbar = () => {
 
   useEffect(() => {
     const searchDebounced = setTimeout(() => {
-      if (searchTerm.length >= 2) {
+      if (searchTerm.length >= 2 && teams && players) {
         performSearch();
       } else {
         setSearchResults({ teams: [], players: [] });
@@ -35,37 +40,22 @@ const Navbar = () => {
     }, 300);
 
     return () => clearTimeout(searchDebounced);
-  }, [searchTerm]);
+  }, [searchTerm, teams, players]);
 
-  const performSearch = async () => {
-    setLoading(true);
-    try {
-      const [teamsRes, playersRes] = await Promise.all([
-        api.get('/teams/'),
-        api.get('/players/')
-      ]);
+  const performSearch = () => {
+    const term = searchTerm.toLowerCase();
 
-      const teams = teamsRes.data.teams || [];
-      const players = playersRes.data.players || [];
+    const filteredTeams = (teams || []).filter(team =>
+      team.name.toLowerCase().includes(term) ||
+      (team.tag && team.tag.toLowerCase().includes(term))
+    ).slice(0, 5);
 
-      const term = searchTerm.toLowerCase();
+    const filteredPlayers = (players || []).filter(player =>
+      player.summoner_name.toLowerCase().includes(term)
+    ).slice(0, 5);
 
-      const filteredTeams = teams.filter(team =>
-        team.name.toLowerCase().includes(term) ||
-        (team.tag && team.tag.toLowerCase().includes(term))
-      ).slice(0, 5);
-
-      const filteredPlayers = players.filter(player =>
-        player.summoner_name.toLowerCase().includes(term)
-      ).slice(0, 5);
-
-      setSearchResults({ teams: filteredTeams, players: filteredPlayers });
-      setShowResults(true);
-    } catch (error) {
-      console.error('Search failed:', error);
-    } finally {
-      setLoading(false);
-    }
+    setSearchResults({ teams: filteredTeams, players: filteredPlayers });
+    setShowResults(true);
   };
 
   const handleResultClick = (type, id) => {

@@ -4,31 +4,29 @@ import { User, Search } from 'lucide-react';
 import api from '../config/api';
 import RoleIcon from '../components/RoleIcon';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
+import { usePlayers } from '../hooks/api/usePlayer';
+import { useTeams } from '../hooks/api/useTeam';
+import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 
 const Players = () => {
-  const [players, setPlayers] = useState([]);
-  const [playersWithTeams, setPlayersWithTeams] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [enrichedPlayers, setEnrichedPlayers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Fetch data with SWR
+  const { players: playersData, isLoading: playersLoading, isValidating: playersValidating } = usePlayers();
+  const { teams: teamsData, isLoading: teamsLoading } = useTeams();
+
+  const loading = playersLoading || teamsLoading;
+
+  // Enrich players with team data
   useEffect(() => {
-    fetchPlayers();
-  }, []);
-
-  const fetchPlayers = async () => {
-    try {
-      const [playersRes, teamsRes] = await Promise.all([
-        api.get('/players'),
-        api.get('/teams/')
-      ]);
-
-      const playersArray = playersRes.data.players || [];
-      const teamsArray = teamsRes.data.teams || [];
+    const enrichPlayersWithTeams = async () => {
+      if (!playersData || !teamsData) return;
 
       // Fetch rosters for all teams and map players to their teams
       const playerTeamsMap = {};
 
-      for (const team of teamsArray) {
+      for (const team of teamsData) {
         try {
           const rosterRes = await api.get(`/teams/${team.id}/roster`);
           const roster = rosterRes.data.roster || [];
@@ -50,23 +48,18 @@ const Players = () => {
       }
 
       // Attach teams to players
-      const enrichedPlayers = playersArray.map(player => ({
+      const enriched = playersData.map(player => ({
         ...player,
         teams: playerTeamsMap[player.id] || []
       }));
 
-      setPlayers(enrichedPlayers);
-      setPlayersWithTeams(enrichedPlayers);
-    } catch (error) {
-      console.error('Failed to fetch players:', error);
-      setPlayers([]);
-      setPlayersWithTeams([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      setEnrichedPlayers(enriched);
+    };
 
-  const filteredPlayers = players.filter((player) =>
+    enrichPlayersWithTeams();
+  }, [playersData, teamsData]);
+
+  const filteredPlayers = enrichedPlayers.filter((player) =>
     player.summoner_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -80,6 +73,9 @@ const Players = () => {
 
   return (
     <div className="p-6">
+      {/* Background refresh indicator */}
+      <RefreshIndicator isValidating={playersValidating} />
+
       <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
         {/* Header */}
         <div>

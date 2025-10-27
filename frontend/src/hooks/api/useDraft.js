@@ -210,7 +210,7 @@ export function useLineupPrediction(teamId) {
   );
 
   return {
-    prediction: data,
+    prediction: data?.predictions || [],
     isLoading,
     isError: error,
     isValidating,

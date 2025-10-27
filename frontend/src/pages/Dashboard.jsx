@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import useSWR from 'swr';
 import {
 	Users,
 	TrendingUp,
@@ -7,47 +8,28 @@ import {
 	ChevronRight,
 	Search,
 } from 'lucide-react';
-import api from '../config/api';
+import { useTeams } from '../hooks/api/useTeam';
+import { cacheKeys } from '../lib/cacheKeys';
 import ImportTeamModal from '../components/ImportTeamModal';
+import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 
 const Dashboard = () => {
-	const [teams, setTeams] = useState([]);
-	const [loading, setLoading] = useState(true);
 	const navigate = useNavigate();
-	const [stats, setStats] = useState({
-		totalTeams: 0,
-		totalPlayers: 0,
-		recentMatches: 0,
-	});
 	const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-	useEffect(() => {
-		fetchDashboardData();
-	}, []);
+	// Fetch teams with SWR
+	const { teams: allTeams, isLoading: teamsLoading, isValidating: teamsValidating } = useTeams();
 
-	const fetchDashboardData = async () => {
-		try {
-			const [teamsRes, dashboardStatsRes] = await Promise.all([
-				api.get('/teams'),
-				api.get('/dashboard/stats'),
-			]);
+	// Fetch dashboard stats with SWR
+	const { data: dashboardStats, isLoading: statsLoading } = useSWR('/dashboard/stats');
 
-			const teamsData = teamsRes.data;
-			const dashboardStats = dashboardStatsRes.data;
-
-			const teamsArray = teamsData.teams || [];
-
-			setTeams(teamsArray.slice(0, 6));
-			setStats({
-				totalTeams: dashboardStats.total_teams || 0,
-				totalPlayers: dashboardStats.total_players || 0,
-				recentMatches: dashboardStats.tournament_matches || 0,
-			});
-		} catch (error) {
-			console.error('Failed to fetch dashboard data:', error);
-		} finally {
-			setLoading(false);
-		}
+	// Derived state
+	const teams = (allTeams || []).slice(0, 6);
+	const loading = teamsLoading || statsLoading;
+	const stats = {
+		totalTeams: dashboardStats?.total_teams || 0,
+		totalPlayers: dashboardStats?.total_players || 0,
+		recentMatches: dashboardStats?.tournament_matches || 0,
 	};
 
 	const handleImportSuccess = (data) => {
@@ -72,6 +54,9 @@ const Dashboard = () => {
 
 	return (
 		<div className="p-6">
+			{/* Background refresh indicator */}
+			<RefreshIndicator isValidating={teamsValidating} />
+
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<ImportTeamModal
 					isOpen={isImportModalOpen}

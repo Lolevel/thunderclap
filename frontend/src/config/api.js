@@ -1,12 +1,18 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Use environment variable or fallback to localhost for development
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+
+console.log('[API Config] Base URL:', API_BASE_URL);
+console.log('[API Config] Mode:', import.meta.env.MODE);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  // Ensure credentials are sent with cross-origin requests
+  withCredentials: false,
 });
 
 // Request interceptor

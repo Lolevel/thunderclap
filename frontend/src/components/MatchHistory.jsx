@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users, List, LayoutGrid } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import api from '../config/api';
 import { displayRole } from '../utils/roleMapping';
 import { getItemIconUrl, filterEmptyItems, handleItemError } from '../utils/itemHelper';
-import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
+import { useTeamMatches } from '../hooks/api/useTeam';
+import { usePlayerMatches } from '../hooks/api/usePlayer';
 
 /**
  * Reusable Match History Component for both Team and Player views
@@ -12,51 +12,19 @@ import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHe
  * @param {string} entityType - Either 'team' or 'player'
  */
 const MatchHistory = ({ entityId, entityType = 'team' }) => {
-  const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [expandedMatches, setExpandedMatches] = useState(new Set());
   const [matchesLimit, setMatchesLimit] = useState(entityType === 'team' ? 50 : 20);
   const [viewMode, setViewMode] = useState('detailed'); // 'detailed' or 'simplified'
 
-  useEffect(() => {
-    fetchMatches();
-  }, [entityId, entityType]);
+  // Fetch matches with SWR
+  const teamMatchesResult = useTeamMatches(entityType === 'team' ? entityId : null, matchesLimit);
+  const playerMatchesResult = usePlayerMatches(entityType === 'player' ? entityId : null, matchesLimit);
 
-  const fetchMatches = async () => {
-    try {
-      setLoading(true);
-      const endpoint = entityType === 'team'
-        ? `/teams/${entityId}/matches?limit=${matchesLimit}`
-        : `/players/${entityId}/matches?limit=${matchesLimit}`;
+  const { matches, isLoading: loading } = entityType === 'team' ? teamMatchesResult : playerMatchesResult;
 
-      const response = await api.get(endpoint);
-      setMatches(response.data.matches || []);
-    } catch (error) {
-      console.error('Failed to fetch matches:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMoreMatches = async () => {
-    setLoadingMore(true);
+  const loadMoreMatches = () => {
     const increment = entityType === 'team' ? 50 : 20;
-    const newLimit = matchesLimit + increment;
-
-    try {
-      const endpoint = entityType === 'team'
-        ? `/teams/${entityId}/matches?limit=${newLimit}`
-        : `/players/${entityId}/matches?limit=${newLimit}`;
-
-      const response = await api.get(endpoint);
-      setMatches(response.data.matches || []);
-      setMatchesLimit(newLimit);
-    } catch (error) {
-      console.error('Failed to load more matches:', error);
-    } finally {
-      setLoadingMore(false);
-    }
+    setMatchesLimit(matchesLimit + increment);
   };
 
   const toggleMatch = (matchId) => {
@@ -633,10 +601,10 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
         <div className="mt-6 text-center">
           <button
             onClick={loadMoreMatches}
-            disabled={loadingMore}
+            disabled={loading}
             className="px-6 py-3 bg-primary/20 hover:bg-primary/30 text-primary rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loadingMore ? 'Lädt...' : 'Mehr laden'}
+            {loading ? 'Lädt...' : 'Mehr laden'}
           </button>
         </div>
       )}
