@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir gunicorn
 # Copy application code
 COPY . .
 
+# Make migration script executable
+RUN chmod +x migrate.py
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
