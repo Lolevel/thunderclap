@@ -23,6 +23,7 @@ import {
 	useRefreshTeamData,
 } from '../hooks/api/useTeamMutations';
 import { cacheKeys } from '../lib/cacheKeys';
+import { useTeamDataPrefetch } from '../hooks/useTeamDataPrefetch';
 import TeamOverviewTab from '../components/TeamOverviewTab';
 import ChampionPoolTab from '../components/ChampionPoolTab';
 import InDepthStatsTab from '../components/InDepthStatsTab';
@@ -31,6 +32,7 @@ import MatchHistoryTab from '../components/MatchHistoryTab';
 import GamePrepTab from '../components/GamePrepTab';
 import RefreshProgressModal from '../components/RefreshProgressModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
+import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
 import { useToast } from '../components/ToastContainer';
 
 const TeamDetail = () => {
@@ -49,12 +51,9 @@ const TeamDetail = () => {
 	// Fetch lineup predictions
 	const { prediction: predictions } = useLineupPrediction(id);
 
-	// Prefetch data for all tabs (runs in background)
-	useSWR(id ? cacheKeys.teamOverview(id) : null); // Overview tab
-	useSWR(id ? cacheKeys.teamChampions(id) : null); // Champions tab
-	useSWR(id ? cacheKeys.teamDraftPatterns(id) : null); // Draft patterns
-	useSWR(id ? cacheKeys.teamStats(id) : null); // Stats tab
-	useSWR(id ? cacheKeys.teamMatches(id, 20) : null); // Match history
+	// Prefetch data for all tabs sequentially (runs in background, one after another)
+	// This prevents lag while ensuring all data is ready when switching tabs
+	const prefetchStatus = useTeamDataPrefetch(id, !teamLoading && !teamError);
 
 	// Mutation hooks
 	const { addPlayer } = useAddPlayer(id);
@@ -156,6 +155,9 @@ const TeamDetail = () => {
 		<div className="p-6">
 			{/* Background refresh indicator */}
 			<RefreshIndicator isValidating={rosterValidating} />
+
+			{/* Background prefetch indicator */}
+			<PrefetchIndicator prefetchStatus={prefetchStatus} />
 
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<Link
