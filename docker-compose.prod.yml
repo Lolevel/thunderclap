@@ -89,13 +89,20 @@ services:
       dockerfile: Dockerfile
     container_name: pl_scout_frontend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5173/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     environment:
       - VITE_API_BASE_URL=https://api.lolevel.de/thunderclap/api
       - VITE_APP_URL=https://thunderclap.lolevel.de
     networks:
       - pl_scout_network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     command: npm run preview -- --host 0.0.0.0 --port 5173
 
 volumes:

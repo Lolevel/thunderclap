@@ -218,3 +218,52 @@ In Backend `.env`:
 ```
 CACHE_ENABLED=true
 ```
+
+## Health Checks Best Practices
+
+### Warum localhost/127.0.0.1?
+
+Health checks sollten IMMER auf localhost/127.0.0.1 prüfen, nicht auf die externe Domain:
+
+```yaml
+# ✅ RICHTIG - Prüft den Container direkt
+healthcheck:
+  test: ["CMD", "wget", "--spider", "http://127.0.0.1:5173/"]
+
+# ❌ FALSCH - Abhängig von DNS, Caddy, etc.
+healthcheck:
+  test: ["CMD", "wget", "--spider", "https://thunderclap.lolevel.de/"]
+```
+
+**Vorteile:**
+1. **Unabhängig** - Container kann gesund sein, auch wenn DNS/Proxy Probleme hat
+2. **Schneller** - Kein Netzwerk-Hop über Reverse Proxy
+3. **Isoliert** - Keine zirkulären Dependencies
+4. **Genau** - Prüft wirklich den Service im Container, nicht das Routing
+
+### Health Check Status prüfen
+
+```bash
+# Alle Container mit Health Status
+docker compose -f docker-compose.prod.yml ps
+
+# Einzelnen Health Check testen
+docker exec pl_scout_backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=5)"
+docker exec pl_scout_frontend wget --spider http://127.0.0.1:5173/
+
+# Health Check Logs
+docker inspect pl_scout_backend | jq '.[0].State.Health'
+```
+
+### Depends On mit Health Checks
+
+Frontend startet erst, wenn Backend healthy ist:
+
+```yaml
+frontend:
+  depends_on:
+    backend:
+      condition: service_healthy  # Wartet auf Backend Health Check
+```
+
+Dies verhindert Race Conditions beim Startup.
