@@ -29,7 +29,7 @@ import ChampionPoolTab from '../components/ChampionPoolTab';
 import InDepthStatsTab from '../components/InDepthStatsTab';
 import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
-import GamePrepTab from '../components/GamePrepTab';
+import GamePrepTab from '../components/GamePrepTabNew';
 import RefreshProgressModal from '../components/RefreshProgressModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
@@ -266,9 +266,7 @@ const TeamDetail = () => {
 					{activeTab === 'report' && <InDepthStatsTab teamId={id} />}
 
 					{activeTab === 'gameprep' && (
-						<GamePrepTab
-							teamId={id}
-						/>
+						<GamePrepTab teamId={id} team={team} roster={roster} predictions={predictions} />
 					)}
 				</div>
 
