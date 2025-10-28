@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Make entrypoint script executable
+RUN chmod +x entrypoint.sh
+
 # Expose port
 EXPOSE 5000
 
@@ -27,8 +30,11 @@ ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=app
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/health')"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=5)"
 
-# Run application
+# Use entrypoint for automatic migrations
+ENTRYPOINT ["./entrypoint.sh"]
+
+# Default command (can be overridden)
 CMD ["python", "run.py"]

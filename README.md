@@ -1,255 +1,445 @@
-# Prime League Scout
+# ⚡ Thunderclap - Prime League Scout
 
-A comprehensive scouting and preparation tool for Prime League teams that leverages Riot Games API data to analyze opponents, predict lineups, and provide strategic insights.
+Ein umfassendes Scouting- und Vorbereitungs-Tool für Prime League Teams. Analysiert Gegner über die Riot Games API, erstellt Lineup-Predictions und bietet strategische Insights für Wettbewerbsspiele.
 
-## Features
+## 🚀 Quick Start
 
-### Team Management
-- **Team Import**: Import teams via OP.GG multi-search URLs (filters for games with 4+ players together)
-- **Bulk Team Analysis**: Analyze up to 20 players and find tournament games where 4-5 played together
-- **Team Overview**: Key stats at a glance (PL games, top 5 champions, avg rank, player count)
-- **OP.GG Integration**: Open team or individual player OP.GG profiles, multi-search for selected players
-
-### Player Analysis
-- **Two Champion Tabs**: Separate Prime League and Solo Queue stats
-- **Performance Metrics**: Games, Winrate, KDA, CS/min, Pink Wards per game
-- **Role Display**: User-friendly role names (Top, Jungle, Mid, Bot, Support)
-
-### Draft Analysis
-- **Team Champion Pool**: All champions with winrate (shows which player played what)
-- **Ban Priorities**: Favorite bans by rotation (1/2/3)
-- **Bans Against**: Champions most banned against the team
-- **First Pick Priority**: Most picked champions on first pick
-
-### Scouting Reports
-- **Side Performance**: Blue/red side winrates
-- **Objective Control**: Dragons, barons, heralds per game
-- **Early Game Stats**: First blood %, first tower %, avg game duration
-- **Timeline Analytics**: Gold diff @15, early objective timings
-
-## Tech Stack
-
-### Backend
-- **Python 3.10+**
-- **Flask 3.0** - Web framework
-- **PostgreSQL 15** - Database
-- **SQLAlchemy** - ORM
-- **Riot Games API** - Data source
-
-### Frontend (Coming soon)
-- React 18
-- Material-UI
-- Recharts
-
-## Quick Start with Docker (Recommended)
-
-### Prerequisites
+### Voraussetzungen
 - Docker & Docker Compose
-- Riot Games API Key
+- [Riot Games API Key](https://developer.riotgames.com/)
 
-### Installation
+### Setup in 3 Schritten
 
-1. **Clone and setup**
+**1. Environment konfigurieren**
+
+Bearbeite `.env` im Root-Verzeichnis:
 ```bash
-git clone <repo-url>
-cd pl_prep
-make dev-init
+PROJECT_ENV=development
+
+# Domains
+DOMAIN_FRONTEND=localhost:5173
+DOMAIN_BACKEND=localhost:5000
+
+# Dein Riot API Key
+RIOT_API_KEY=RGAPI-dein-key-hier
 ```
 
-2. **Configure Riot API Key**
+**2. Starten**
 ```bash
-# Edit backend/.env and add your API key:
-RIOT_API_KEY=RGAPI-your-key-here
+docker-compose up -d
 ```
 
-3. **Start services**
-```bash
-make up
-```
+**3. Zugreifen**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:5000
+- Health Check: http://localhost:5000/health
 
-4. **Check status**
-```bash
-make logs
-```
+**Fertig!** 🎉
 
-API available at `http://localhost:5000`
-
-### Useful Commands
+### Nützliche Commands
 ```bash
-make build          # Build Docker images
-make up             # Start all services
-make down           # Stop all services
-make logs           # View logs
-make shell          # Backend shell
-make db-shell       # PostgreSQL shell
-make clean          # Clean up everything
+docker-compose up -d              # Alles starten
+docker-compose logs -f            # Logs anzeigen
+docker-compose down               # Alles stoppen
+docker-compose up -d --build      # Neu bauen und starten
 ```
 
 ---
 
-## Manual Setup (Without Docker)
+## 🔄 Wechsel zwischen Dev und Production
 
-### Prerequisites
-- Python 3.10+
-- PostgreSQL 15+
-- Riot Games API Key
+Nur `.env` im Root editieren:
+```bash
+# Für Production:
+PROJECT_ENV=production
+DOMAIN_FRONTEND=thunderclap.lolevel.de
+DOMAIN_BACKEND=api.lolevel.de/thunderclap
+```
 
-### Installation
+Dann neustarten:
+```bash
+docker-compose down && docker-compose up -d
+```
 
-1. **Setup backend**
+**CORS ist automatisch für BEIDE konfiguriert** - localhost und production domains funktionieren gleichzeitig!
+
+---
+
+## ✨ Features
+
+### Team Management
+- **Team Import**: Teams via OP.GG Multi-Search URLs importieren
+- **Bulk Analysis**: Bis zu 20 Spieler analysieren und Tournament-Games finden
+- **Team Overview**: Key Stats auf einen Blick (PL Games, Top 5 Champions, Avg Rank)
+- **OP.GG Integration**: Team oder einzelne Spieler OP.GG öffnen, Multi-Search für ausgewählte Spieler
+
+### Player Analysis
+- **Zwei Champion Tabs**: Getrennte Prime League und Solo Queue Stats
+- **Performance Metrics**: Games, Winrate, KDA, CS/min, Pink Wards per game
+- **Role Display**: User-friendly Namen (Top, Jungle, Mid, Bot, Support)
+
+### Draft Preparation (Game Preparation)
+- **Roster Scenarios**: Erstelle und manage mehrere Roster-Szenarien
+- **Draft Scenarios**: Für jeden Roster-Scenario eigene Draft-Simulationen
+- **Champion Pool**: Team-Champion-Pool mit Winrates
+- **Ban Analysis**: Favorite Bans nach Rotation (1/2/3)
+- **First Pick Priority**: Meist gepickte Champions bei First Pick
+
+### Scouting Reports
+- **Side Performance**: Blue/Red Side Winrates
+- **Objective Control**: Dragons, Barons, Heralds pro Spiel
+- **Early Game Stats**: First Blood %, First Tower %, Avg Game Duration
+- **Timeline Analytics**: Gold Diff @15, Early Objective Timings
+
+---
+
+## 🏗️ Architektur
+
+### Tech Stack
+
+**Backend:**
+- Python 3.11+ mit Flask
+- PostgreSQL 15 (Datenbank)
+- Redis (Caching)
+- SQLAlchemy (ORM)
+- Riot Games API
+
+**Frontend:**
+- React 18 mit Vite
+- TailwindCSS
+- Recharts (Visualisierung)
+
+**Deployment:**
+- Docker & Docker Compose
+- Caddy (Reverse Proxy für Production)
+
+### Projekt-Struktur
+```
+thunderclap/
+├── .env                    # 🎯 Zentrale Konfiguration
+├── .env.example            # Template
+├── docker-compose.yml      # Docker Setup
+├── schema.sql              # DB Schema
+│
+├── backend/
+│   ├── app/
+│   │   ├── models/         # SQLAlchemy Models
+│   │   ├── routes/         # API Endpoints
+│   │   ├── services/       # Business Logic
+│   │   └── utils/          # Helper Functions
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # React Components
+│   │   ├── hooks/          # Custom Hooks
+│   │   ├── lib/            # Utilities
+│   │   └── styles/         # TailwindCSS
+│   ├── Dockerfile
+│   └── package.json
+│
+└── migrations/             # DB Migrations
+```
+
+---
+
+## 🔌 API Endpoints
+
+### Teams
+```
+POST   /api/teams/import                # Team via OP.GG URL importieren
+POST   /api/teams/bulk-analyze          # Bis zu 20 Spieler analysieren
+GET    /api/teams/<id>                  # Team Details
+GET    /api/teams/<id>/overview         # Team Overview Stats
+POST   /api/teams/<id>/refresh          # Stats aktualisieren
+GET    /api/teams/<id>/roster           # Aktueller Roster
+GET    /api/teams/<id>/draft-analysis   # Draft Patterns
+GET    /api/teams/<id>/scouting-report  # Detaillierte Spielstatistiken
+```
+
+### Players
+```
+GET    /api/players/<id>                      # Player Details
+GET    /api/players/<id>/champions/tournament # PL Champion Stats
+GET    /api/players/<id>/champions/soloqueue  # Solo Queue Top 20
+GET    /api/players/<id>/matches              # Match History
+```
+
+### Scouting
+```
+POST   /api/scout/predict-lineup        # Lineup für Team vorhersagen
+GET    /api/scout/report/<team_id>      # Scouting Report generieren
+POST   /api/scout/draft-helper          # Draft Vorschläge
+```
+
+### Draft Scenarios (Game Preparation)
+```
+GET    /api/teams/<id>/draft-scenarios  # Alle Scenarios für ein Team
+POST   /api/teams/<id>/draft-scenarios  # Neues Scenario erstellen
+PUT    /api/draft-scenarios/<id>        # Scenario updaten
+DELETE /api/draft-scenarios/<id>        # Scenario löschen
+POST   /api/draft-scenarios/<id>/lock   # Scenario locken
+```
+
+---
+
+## 🎮 Key Algorithms
+
+### Lineup Prediction Weights
+```python
+PREDICTION_WEIGHTS = {
+    'recent_tournament_games': 0.50,  # Tournament History (HIGHEST)
+    'role_coverage': 0.30,            # Rolle-Distribution
+    'solo_queue_activity': 0.18,      # Recent Activity
+    'performance_rating': 0.02        # Performance (Benching selten)
+}
+```
+
+### Tournament Game Detection
+Alle Custom Games (queue_id=0) über API sind Tournament Games. Scrims sind privat und nicht zugänglich.
+
+**Kriterien:**
+- queue_id = 0 (Custom Game)
+- game_duration > 900s (min. 15 Min, filtert Remakes)
+- Alle Spieler Level 30+
+- Draft Mode enabled
+
+### Timeline Data Usage
+**Nur die letzten 10 Tournament Games pro Team** fetchen Timeline-Daten (API Rate Limit schonen).
+
+Verwendet für:
+- Gold Differential @ 15min
+- Early Game Objective Control
+- Early Game Aggression Patterns
+
+---
+
+## 🎨 UI Struktur
+
+### Team Page Tabs
+1. **Overview**: PL Games Stats, Top 5 Champions, Avg Rank, Player Count
+2. **Players**: Roster mit Rollen, OP.GG Buttons, Multi-Select für OP.GG Multi-Search
+3. **Game Preparation**: Roster-Scenarios und Draft-Scenarios
+4. **Draft Analysis**: Champion Pool, Ban Priorities, First Pick Stats
+5. **Scouting Report**: Side Performance, Objective Control, Timeline Data
+6. **Match History**: Letzte Spiele mit Details
+
+### Player Detail Pages
+- **Prime League Tab**: Tournament Game Champion Stats
+- **Solo Queue Tab**: Top 20 Champions dieser Season
+- Stats: Games, Winrate, KDA, CS/min, Pink Wards/game
+
+### Role Names
+- **Display**: Top, Jungle, Mid, Bot, Support
+- **Storage**: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot's interne Werte)
+
+---
+
+## 📦 Deployment auf Production
+
+### Voraussetzungen
+- Docker & Docker Compose auf Server
+- Caddy als Reverse Proxy
+- Externes Docker Network: `pl_scout_network`
+
+### Deploy Steps
+
+**1. Network erstellen (einmalig)**
+```bash
+docker network create pl_scout_network
+```
+
+**2. Environment für Production**
+```bash
+# In .env anpassen:
+PROJECT_ENV=production
+DOMAIN_FRONTEND=thunderclap.lolevel.de
+DOMAIN_BACKEND=api.lolevel.de/thunderclap
+RIOT_API_KEY=dein-echter-key
+SECRET_KEY=sicherer-random-key
+```
+
+**3. Deployen**
+```bash
+git pull origin main
+docker-compose down
+docker-compose up -d --build
+```
+
+**4. Verify**
+```bash
+docker-compose ps              # Container Status
+docker-compose logs -f backend # Logs checken
+curl http://localhost:5000/health # Backend Test
+```
+
+### Caddy Configuration
+```caddy
+thunderclap.lolevel.de {
+    reverse_proxy pl_scout_frontend:5173
+}
+
+api.lolevel.de {
+    route /thunderclap/* {
+        handle_path /thunderclap/* {
+            reverse_proxy pl_scout_backend:5000 {
+                header_up X-Forwarded-Proto {scheme}
+                header_up X-Forwarded-For {remote}
+                header_up X-Forwarded-Host {host}
+            }
+        }
+    }
+}
+```
+
+---
+
+## 🔧 Development
+
+### Lokal ohne Docker
+
+**Backend:**
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-2. **Configure environment**
-```bash
-cp .env.example .env
-# Edit .env with your database credentials and Riot API key
-```
-
-3. **Setup database**
-```bash
-createdb pl_scout
-psql pl_scout < ../schema.sql
-```
-
-4. **Run application**
-```bash
 python run.py
 ```
 
-## Development
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
 ### Database Migrations
+
+**Automatisch!** Migrations werden beim Container-Start automatisch ausgeführt.
+
 ```bash
-# Create new migration
-flask db migrate -m "description"
+# 1. Model in backend/app/models/ ändern
+# 2. Container neustarten
+docker-compose restart backend
 
-# Apply migrations
-flask db upgrade
-
-# Rollback
-flask db downgrade
+# Fertig! Auto-Migration erkennt Änderungen und führt durch
 ```
+
+**Manuell** (optional):
+```bash
+# Migration generieren
+docker exec pl_scout_backend flask db migrate -m "beschreibung"
+
+# Migration anwenden
+docker exec pl_scout_backend flask db upgrade
+```
+
+Siehe **[MIGRATIONS.md](MIGRATIONS.md)** für Details.
 
 ### Testing
 ```bash
+# Backend Tests
+cd backend
 pytest
+
+# Frontend Tests
+cd frontend
+npm test
 ```
 
-### Flask Shell
+### Access Token erstellen
 ```bash
-flask shell
-# Models are auto-imported (Team, Player, etc.)
+docker exec pl_scout_backend python create_token.py --name "Admin" --days 365
 ```
 
-## API Endpoints
+---
 
-### Teams
-- `POST /api/teams/import` - Import team via OP.GG URL (filters for 4+ players together)
-- `POST /api/teams/bulk-analyze` - Analyze up to 20 players for tournament games
-- `GET /api/teams/<id>` - Get team details
-- `GET /api/teams/<id>/overview` - Team overview (PL stats, top 5 champs, avg rank)
-- `POST /api/teams/<id>/refresh` - Update team stats
-- `GET /api/teams/<id>/roster` - Get current roster
-- `GET /api/teams/<id>/stats` - Get team statistics
-- `GET /api/teams/<id>/draft-analysis` - Draft patterns and champion pool
-- `GET /api/teams/<id>/scouting-report` - Detailed game statistics
+## 🐛 Troubleshooting
 
-### Players
-- `GET /api/players/<id>` - Get player details
-- `GET /api/players/<id>/champions/tournament` - Prime League champion stats
-- `GET /api/players/<id>/champions/soloqueue` - Solo Queue top 20 champions
-- `GET /api/players/<id>/matches` - Get match history
-- `GET /api/players/<id>/opgg` - Generate OP.GG URL
-
-### Scouting
-- `POST /api/scout/predict-lineup` - Predict lineup for team
-- `GET /api/scout/report/<team_id>` - Generate scouting report
-- `POST /api/scout/draft-helper` - Get draft suggestions
-
-## Project Structure
-
-```
-backend/
-├── app/
-│   ├── __init__.py          # App factory
-│   ├── models/              # SQLAlchemy models
-│   │   ├── __init__.py
-│   │   ├── team.py
-│   │   ├── player.py
-│   │   ├── match.py
-│   │   └── ...
-│   ├── routes/              # API endpoints
-│   │   ├── __init__.py
-│   │   ├── teams.py
-│   │   ├── players.py
-│   │   └── scouting.py
-│   ├── services/            # Business logic
-│   │   ├── __init__.py
-│   │   ├── riot_client.py   # Riot API wrapper
-│   │   ├── lineup_predictor.py
-│   │   └── stats_calculator.py
-│   └── utils/               # Helper functions
-│       ├── __init__.py
-│       └── opgg_parser.py
-├── migrations/              # Database migrations
-├── tests/                   # Tests
-├── config.py               # Configuration
-├── run.py                  # Entry point
-└── requirements.txt        # Dependencies
-```
-
-## Key Algorithms
-
-### Lineup Prediction Weights
-```python
-PREDICTION_WEIGHTS = {
-    'recent_tournament_games': 0.50,  # Tournament history (HIGHEST)
-    'role_coverage': 0.30,            # Role distribution
-    'solo_queue_activity': 0.18,      # Recent activity
-    'performance_rating': 0.02        # Performance (benching rare)
-}
-```
-
-### Tournament Game Detection
-All custom games (queue_id=0) visible via API are tournament games. Scrims are private and not accessible.
-
-### Timeline Data
-Only fetches timeline data for last 10 tournament games per team to respect API rate limits.
-
-## UI Structure
-
-### Team Page Tabs
-1. **Overview**: PL games stats, top 5 champions, avg rank, player count
-2. **Players**: Roster with role display (Top/Jungle/Mid/Bot/Support), OP.GG buttons
-3. **Draft Analysis**: Champion pool with player info, ban priorities, first pick stats
-4. **Scouting Report**: Side performance, objective control, timeline data
-
-### Player Pages
-- **Prime League Tab**: Tournament game champion stats
-- **Solo Queue Tab**: Top 20 most played champions this season
-- Stats shown: Games, Winrate, KDA, CS/min, Pink Wards/game
-
-### Role Names
-- **Display**: Top, Jungle, Mid, Bot, Support
-- **Storage**: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY (Riot's internal values)
-
-## Access Token erstellen
-
+### CORS Errors
 ```bash
-docker exec pl_scout_backend python create_token.py --name "Production Admin" --days 365
+# Backend CORS Origins checken
+docker logs pl_scout_backend | grep CORS
+
+# Sollte zeigen:
+# [CORS] Configured origins: ['http://localhost:5173', 'http://localhost:5174', 'https://thunderclap.lolevel.de']
 ```
 
-## Documentation
+### Frontend erreicht Backend nicht
+```bash
+# Frontend Environment checken
+docker exec pl_scout_frontend env | grep VITE
 
-- [CLAUDE.md](CLAUDE.md) - Development guide for AI assistants
-- [project.md](project.md) - Complete project specification
-- [schema.sql](schema.sql) - Database schema
+# API direkt testen
+curl http://localhost:5000/health
+```
 
-## License
+### Database Connection Errors
+```bash
+# Postgres Health Check
+docker ps | grep postgres
+
+# Connection String checken
+docker exec pl_scout_backend env | grep DATABASE_URL
+```
+
+### Port bereits in Verwendung
+```bash
+# Prüfen was Port 5000 oder 5173 nutzt
+netstat -ano | findstr :5000
+netstat -ano | findstr :5173
+```
+
+---
+
+## 📊 Database Schema
+
+Siehe [`schema.sql`](schema.sql) für das komplette Schema.
+
+### Wichtigste Tabellen:
+- `teams` - Team Metadaten
+- `players` - Spieler Daten (summoner_name, puuid, rank)
+- `team_rosters` - Many-to-Many zwischen teams/players mit Rolle
+- `matches` - Game Daten mit Tournament/Scrim Flags
+- `match_participants` - Player Performance in Matches
+- `player_champions` - Champion Pool Stats (Tournament + Solo Queue)
+- `draft_patterns` - Ban/Pick Tendenzen
+- `draft_scenarios` - Game Preparation Scenarios
+- `lineup_predictions` - Vorhergesagte Rosters mit Confidence Scores
+
+---
+
+## 🔒 Security
+
+- `.env` Datei ist in `.gitignore` und wird nicht committed
+- API Keys nur über Environment Variables
+- CORS auf spezifische Domains beschränkt
+- Production nutzt Gunicorn statt Flask Dev Server
+- Health Checks nur auf localhost (nicht über externe Domains)
+
+---
+
+## 📚 Weitere Dokumentation
+
+- **[SETUP.md](SETUP.md)** - Detaillierte Setup-Anleitung
+- **[MIGRATIONS.md](MIGRATIONS.md)** - Database Migrations Guide
+- **[CLAUDE.md](CLAUDE.md)** - Projekt-Kontext für AI-Assistenten
+- **[schema.sql](schema.sql)** - Komplettes Database Schema
+
+---
+
+## 📝 Lizenz
 
 MIT
+
+---
+
+## 🤝 Contributing
+
+Pull Requests sind willkommen! Für größere Änderungen bitte zuerst ein Issue öffnen.
+
+---
+
+**Made with ⚡ for Prime League Teams**
