@@ -1,109 +1,180 @@
 #!/usr/bin/env python3
 """
-Intelligentes Auto-Migration Script für Thunderclap
-Vergleicht Schema mit DB und führt automatisch Migrations aus
+SQL-based Auto-Migration System für Thunderclap
+Führt SQL-Migrationen aus migrations/ Verzeichnis aus und tracked ausgeführte Migrationen
 """
 import os
 import sys
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate, init, migrate, upgrade, stamp
+import psycopg2
 from pathlib import Path
+from datetime import datetime
 
-# Add app directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-def create_app_for_migration():
-    """Create minimal Flask app for migrations"""
-    app = Flask(__name__)
-
-    # Database configuration
+def get_db_connection():
+    """Create database connection from environment"""
     database_url = os.getenv('DATABASE_URL', 'postgresql://pl_scout_user:pl_scout_password@postgres:5432/pl_scout')
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    return app
+    # Parse DATABASE_URL
+    # Format: postgresql://user:password@host:port/dbname
+    if database_url.startswith('postgresql://'):
+        url = database_url.replace('postgresql://', '')
+        auth, location = url.split('@')
+        user, password = auth.split(':')
+        host_port, dbname = location.split('/')
+        host, port = host_port.split(':') if ':' in host_port else (host_port, '5432')
 
-def setup_migrations():
-    """Initialize Flask-Migrate if not already initialized"""
-    migrations_dir = Path(__file__).parent / 'migrations'
+        return psycopg2.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            dbname=dbname
+        )
+    else:
+        raise ValueError(f"Invalid DATABASE_URL format: {database_url}")
 
+def ensure_migrations_table(conn):
+    """Create schema_migrations table if it doesn't exist"""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id SERIAL PRIMARY KEY,
+                migration_name VARCHAR(255) UNIQUE NOT NULL,
+                executed_at TIMESTAMP DEFAULT NOW()
+            );
+        """)
+        conn.commit()
+        print("✅ Migrations tracking table ready")
+
+def get_executed_migrations(conn):
+    """Get list of already executed migrations"""
+    with conn.cursor() as cur:
+        cur.execute("SELECT migration_name FROM schema_migrations ORDER BY executed_at;")
+        return set(row[0] for row in cur.fetchall())
+
+def get_pending_migrations(migrations_dir, executed_migrations):
+    """Get list of pending SQL migrations"""
     if not migrations_dir.exists():
-        print("🔧 Initializing Flask-Migrate for the first time...")
-        from app import create_app, db
+        return []
 
-        app = create_app()
-        Migrate(app, db)
+    # Find all .sql files
+    all_migrations = sorted([
+        f.name for f in migrations_dir.glob('*.sql')
+        if not f.name.startswith('.')
+    ])
 
-        with app.app_context():
-            init()
-            print("✅ Flask-Migrate initialized")
+    # Filter out already executed ones
+    pending = [m for m in all_migrations if m not in executed_migrations]
 
-            # Stamp current state
-            stamp()
-            print("✅ Database stamped with current state")
+    return pending
 
+def execute_migration(conn, migration_path, migration_name):
+    """Execute a single migration file"""
+    print(f"\n📄 Executing: {migration_name}")
+
+    try:
+        # Read migration file
+        with open(migration_path, 'r', encoding='utf-8') as f:
+            sql = f.read()
+
+        # Execute migration
+        with conn.cursor() as cur:
+            cur.execute(sql)
+
+            # Record migration as executed
+            cur.execute(
+                "INSERT INTO schema_migrations (migration_name) VALUES (%s);",
+                (migration_name,)
+            )
+
+        conn.commit()
+        print(f"   ✅ {migration_name} applied successfully")
         return True
 
-    return False
+    except Exception as e:
+        conn.rollback()
+        print(f"   ❌ Failed to apply {migration_name}: {e}")
+        return False
 
 def run_auto_migration():
-    """Run automatic migration"""
+    """Run automatic SQL migrations"""
     print("🚀 Starting automatic database migration...")
-    print("="*60)
+    print("=" * 60)
 
-    # Import app and db
     try:
-        from app import create_app, db
-    except ImportError as e:
-        print(f"❌ Failed to import app: {e}")
-        print("⚠️  Make sure you're running this from the backend directory")
-        sys.exit(1)
+        # Connect to database
+        print("\n📊 Connecting to database...")
+        conn = get_db_connection()
+        print("✅ Database connection established")
 
-    # Create Flask app
-    app = create_app()
+        # Ensure migrations tracking table exists
+        ensure_migrations_table(conn)
 
-    # Check if migrations directory exists
-    migrations_dir = Path(__file__).parent / 'migrations'
+        # Get executed migrations
+        executed_migrations = get_executed_migrations(conn)
+        if executed_migrations:
+            print(f"\n📋 Already executed: {len(executed_migrations)} migration(s)")
+            for m in sorted(executed_migrations):
+                print(f"   ✓ {m}")
+        else:
+            print("\n📋 No migrations executed yet")
 
-    if not migrations_dir.exists() or not (migrations_dir / 'env.py').exists():
-        print("\n⚠️  Flask-Migrate not initialized yet")
-        print("ℹ️  Skipping auto-migration (use manual SQL migrations for now)")
-        print("ℹ️  To enable Flask-Migrate, run: flask db init")
-        print("\n" + "="*60)
-        print("✅ Migration check completed (skipped)")
-        print("="*60)
-        return
+        # Find pending migrations
+        # Check both root migrations/ and backend/migrations/
+        root_migrations_dir = Path(__file__).parent.parent / 'migrations'
+        backend_migrations_dir = Path(__file__).parent / 'migrations'
 
-    # Initialize Migrate only if directory exists
-    Migrate(app, db)
+        all_pending = []
 
-    with app.app_context():
-        try:
-            # Auto-generate migration if there are changes
-            print("\n📊 Checking for database schema changes...")
+        # Collect from root migrations/
+        if root_migrations_dir.exists():
+            root_pending = get_pending_migrations(root_migrations_dir, executed_migrations)
+            all_pending.extend([(root_migrations_dir / m, m) for m in root_pending])
 
-            # Generate migration
-            from flask_migrate import migrate as flask_migrate
-            result = flask_migrate(message='Auto-generated migration')
+        # Collect from backend/migrations/
+        if backend_migrations_dir.exists():
+            backend_pending = get_pending_migrations(backend_migrations_dir, executed_migrations)
+            all_pending.extend([(backend_migrations_dir / m, m) for m in backend_pending])
 
-            if result:
-                print("✅ Migration file generated")
-            else:
-                print("ℹ️  No schema changes detected")
+        # Remove duplicates (prefer root migrations/)
+        seen_names = set()
+        unique_pending = []
+        for path, name in sorted(all_pending, key=lambda x: x[1]):
+            if name not in seen_names:
+                unique_pending.append((path, name))
+                seen_names.add(name)
 
-            # Apply migrations
+        if not unique_pending:
+            print("\n✅ No pending migrations found - database is up to date")
+        else:
+            print(f"\n🔄 Found {len(unique_pending)} pending migration(s):")
+            for path, name in unique_pending:
+                print(f"   • {name}")
+
+            # Execute pending migrations in order
             print("\n🔄 Applying pending migrations...")
-            upgrade()
-            print("✅ All migrations applied successfully")
+            success_count = 0
+            for migration_path, migration_name in unique_pending:
+                if execute_migration(conn, migration_path, migration_name):
+                    success_count += 1
+                else:
+                    print(f"\n❌ Migration failed: {migration_name}")
+                    print("⚠️  Stopping migration process")
+                    conn.close()
+                    sys.exit(1)
 
-        except Exception as e:
-            print(f"❌ Migration failed: {e}")
-            print("⚠️  Continuing with application startup...")
+            print(f"\n✅ Successfully applied {success_count} migration(s)")
 
-    print("\n" + "="*60)
-    print("✅ Database migration completed successfully!")
-    print("="*60)
+        # Close connection
+        conn.close()
+
+        print("\n" + "=" * 60)
+        print("✅ Database migration completed successfully!")
+        print("=" * 60)
+
+    except Exception as e:
+        print(f"\n❌ Migration system error: {e}")
+        print("⚠️  Continuing with application startup...")
+        sys.exit(0)  # Don't fail startup, just warn
 
 if __name__ == '__main__':
     run_auto_migration()

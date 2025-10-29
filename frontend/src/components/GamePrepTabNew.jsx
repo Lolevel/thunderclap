@@ -42,51 +42,19 @@ export default function GamePrepTabNew({ teamId, team, roster, predictions }) {
   const { comments: rosterComments, createComment: createRosterComment, updateComment: updateRosterComment, deleteComment: deleteRosterComment } = useComments(teamId, 'roster', currentRoster?.id);
   const { comments: scenarioComments, createComment: createScenarioComment, updateComment: updateScenarioComment, deleteComment: deleteScenarioComment } = useComments(teamId, 'scenario', null, currentScenario?.id);
 
-  // Auto-select locked roster OR create predicted roster on mount (only once)
-  const hasCreatedPredicted = useRef(false);
-
+  // Auto-select roster when data loads
   useEffect(() => {
-    if (lockedRoster) {
+    // Handle locked roster
+    if (lockedRoster && currentRoster?.id !== lockedRoster.id) {
       setCurrentRoster(lockedRoster);
       return;
     }
 
+    // Auto-select first roster if rosters exist and none selected
     if (rosters.length > 0 && !currentRoster) {
       setCurrentRoster(rosters[0]);
-      return;
     }
-
-    // Create predicted roster ONCE when no rosters exist
-    if (
-      rosters.length === 0 &&
-      predictions &&
-      predictions.length > 0 &&
-      roster.length > 0 &&
-      !hasCreatedPredicted.current
-    ) {
-      hasCreatedPredicted.current = true;
-
-      const predictedLineup = predictions[0].predicted_lineup;
-
-      // Convert to array with correct role order: Top, Jungle, Mid, Bot, Support
-      const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
-      const rosterArray = roleOrder
-        .filter(role => predictedLineup[role])
-        .map(role => ({
-          player_id: predictedLineup[role].player_id,
-          summoner_name: predictedLineup[role].player_name,
-          role: role
-        }));
-
-      const rosterData = {
-        roster: rosterArray
-      };
-
-      createRoster(rosterData).then((newRoster) => {
-        setCurrentRoster(newRoster);
-      });
-    }
-  }, [lockedRoster, rosters, predictions, roster, currentRoster, createRoster]);
+  }, [lockedRoster, rosters, currentRoster]);
 
   // Handle comment operations
   const handleAddComment = async (level, content, rosterId = null, scenarioId = null) => {
@@ -161,6 +129,7 @@ export default function GamePrepTabNew({ teamId, team, roster, predictions }) {
             rosters={rosters}
             lockedRoster={lockedRoster}
             availablePlayers={roster}
+            predictions={predictions}
             onCreateRoster={createRoster}
             onUpdateRoster={updateRoster}
             onDeleteRoster={deleteRoster}
@@ -307,18 +276,23 @@ export default function GamePrepTabNew({ teamId, team, roster, predictions }) {
 
           {/* Phase 3: Draft Board + Scenario Comments (only if scenario selected) */}
           {currentScenario && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Draft Board (2/3 width) */}
-              <div className="lg:col-span-2">
+            <div className="space-y-6">
+              {/* Draft Board (Full Width) */}
+              <div className="card">
                 <DraftBoard
                   scenario={currentScenario}
-                  onUpdate={(updates) => updateScenario(currentScenario.id, updates)}
+                  onUpdate={(updates) => {
+                    // Optimistic update - update local state immediately
+                    setCurrentScenario(prev => ({ ...prev, ...updates }));
+                    // Then update server
+                    updateScenario(currentScenario.id, updates);
+                  }}
                   teamName={team?.name || 'Unknown Team'}
                 />
               </div>
 
-              {/* Scenario Comments (1/3 width) */}
-              <div className="lg:col-span-1">
+              {/* Scenario Comments (Below Draft) */}
+              <div className="card">
                 <CommentSystem
                   globalComments={[]}
                   rosterComments={[]}

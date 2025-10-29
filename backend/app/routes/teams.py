@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify, current_app
 from app import db
 from app.models import Team, TeamRoster, Player
 from app.services import RiotAPIClient, MatchFetcher
+from app.services.primeleague_scraper import scrape_primeleague_team
 from app.utils import parse_opgg_url
 from app.middleware.auth import require_auth
 from datetime import datetime
@@ -24,13 +25,11 @@ bp = Blueprint("teams", __name__, url_prefix="/api/teams")
 @bp.route("/import", methods=["POST"])
 def import_team():
     """
-    Import team via OP.GG URL
+    Import team via PrimeLeague URL
 
     Request body:
         {
-            "opgg_url": "https://www.op.gg/multisearch/euw?summoners=Name1,Name2,...",
-            "team_name": "Team Name" (optional),
-            "team_tag": "TAG" (optional)
+            "primeleague_url": "https://www.primeleague.gg/de/leagues/.../teams/..."
         }
 
     Returns:
@@ -42,20 +41,36 @@ def import_team():
     """
     data = request.get_json()
 
-    if not data or "opgg_url" not in data:
-        return jsonify({"error": "opgg_url is required"}), 400
+    if not data or "primeleague_url" not in data:
+        return jsonify({"error": "primeleague_url is required"}), 400
 
-    opgg_url = data["opgg_url"]
-    team_name = data.get("team_name")
-    team_tag = data.get("team_tag")
+    primeleague_url = data["primeleague_url"]
 
-    # Parse OP.GG URL
-    summoner_names = parse_opgg_url(opgg_url)
-    if not summoner_names:
-        return jsonify({"error": "Invalid OP.GG URL"}), 400
+    # Scrape PrimeLeague team page
+    current_app.logger.info(f"Scraping PrimeLeague team from: {primeleague_url}")
+
+    scraped_data = scrape_primeleague_team(primeleague_url)
+    if not scraped_data:
+        return jsonify({"error": "Failed to scrape PrimeLeague page"}), 400
+
+    team_info = scraped_data.get('team', {})
+    scraped_players = scraped_data.get('players', [])
+
+    if not team_info.get('name'):
+        return jsonify({"error": "Could not extract team name from PrimeLeague page"}), 400
+
+    if not scraped_players:
+        return jsonify({"error": "No confirmed players found on PrimeLeague page"}), 400
+
+    team_name = team_info['name']
+    team_tag = team_info.get('tag')
+    team_image_url = team_info.get('image_url')
+
+    # Convert to Riot ID format
+    summoner_names = [player['full_identifier'] for player in scraped_players]
 
     current_app.logger.info(
-        f"Importing team with {len(summoner_names)} players: {summoner_names}"
+        f"Importing team '{team_name}' ({team_tag}) with {len(summoner_names)} players: {summoner_names}"
     )
 
     try:
@@ -170,7 +185,12 @@ def import_team():
         if not team_name:
             team_name = f"Team {summoner_names[0]}"  # Default name
 
-        team = Team(name=team_name, tag=team_tag, opgg_url=opgg_url)
+        team = Team(
+            name=team_name,
+            tag=team_tag,
+            prime_league_url=primeleague_url,
+            logo_url=team_image_url
+        )
         db.session.add(team)
         db.session.commit()
 

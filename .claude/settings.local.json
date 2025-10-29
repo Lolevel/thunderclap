@@ -33,7 +33,8 @@
       "Bash(for file in scouting.py stats.py teams.py)",
       "Bash(rm:*)",
       "Bash(docker-compose logs:*)",
-      "WebFetch(domain:raw.communitydragon.org)"
+      "WebFetch(domain:raw.communitydragon.org)",
+      "Bash(docker-compose ps:*)"
     ],
     "deny": [],
     "ask": []

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Users, ChevronRight, Search, AlertCircle } from 'lucide-react';
 import { useTeams } from '../hooks/api/useTeam';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
+import TeamLogo from '../components/TeamLogo';
 
 const Teams = () => {
   // Use SWR hook for data fetching
@@ -84,11 +85,12 @@ const Teams = () => {
 
                 <div className="relative">
                   <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
-                      <span className="text-white font-bold text-lg">
-                        {team.name.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
+                    <TeamLogo
+                      logoUrl={team.logo_url}
+                      teamName={team.name}
+                      size="sm"
+                      className="group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105"
+                    />
                     {team.division && (
                       <span className="px-2 py-1 rounded text-xs font-medium bg-slate-700/50 text-slate-300 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 transition-colors duration-300">
                         {team.division}

@@ -34,6 +34,7 @@ import RefreshProgressModal from '../components/RefreshProgressModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
 import { useToast } from '../components/ToastContainer';
+import TeamLogo from '../components/TeamLogo';
 
 const TeamDetail = () => {
 	const { id } = useParams();
@@ -170,11 +171,12 @@ const TeamDetail = () => {
 				{/* Team Header */}
 				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 p-6">
 					<div className="flex items-center gap-6">
-						<div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-							<span className="text-white font-bold text-3xl">
-								{team.name.charAt(0).toUpperCase()}
-							</span>
-						</div>
+						<TeamLogo
+							logoUrl={team.logo_url}
+							teamName={team.name}
+							size="md"
+							className="shadow-lg shadow-blue-500/20"
+						/>
 						<div className="flex-1">
 							<h1 className="text-3xl font-bold text-white mb-1">
 								{team.name}

@@ -15,6 +15,7 @@ class Team(db.Model):
     name = db.Column(db.String(100), nullable=False)
     tag = db.Column(db.String(10))
     prime_league_id = db.Column(db.String(50), unique=True)
+    prime_league_url = db.Column(db.Text)
     opgg_url = db.Column(db.Text)
     division = db.Column(db.String(50))
     current_split = db.Column(db.String(20))

@@ -4,9 +4,8 @@ import api from '../config/api';
 
 const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
   const [importType, setImportType] = useState('team'); // 'team' or 'player'
+  const [primeleagueUrl, setPrimeleagueUrl] = useState('');
   const [opggUrl, setOpggUrl] = useState('');
-  const [teamName, setTeamName] = useState('');
-  const [teamTag, setTeamTag] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -24,9 +23,7 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
 
       if (importType === 'team') {
         response = await api.post('/teams/import', {
-          opgg_url: opggUrl,
-          team_name: teamName,
-          team_tag: teamTag,
+          primeleague_url: primeleagueUrl,
         });
       } else {
         // Player import
@@ -49,9 +46,8 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
 
   const handleClose = () => {
     setImportType('team');
+    setPrimeleagueUrl('');
     setOpggUrl('');
-    setTeamName('');
-    setTeamTag('');
     setError(null);
     setSuccess(false);
     onClose();
@@ -103,64 +99,41 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* OP.GG URL */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              {importType === 'team' ? 'OP.GG Multisearch URL' : 'OP.GG Spieler URL'}
-            </label>
-            <input
-              type="url"
-              value={opggUrl}
-              onChange={(e) => setOpggUrl(e.target.value)}
-              placeholder={
-                importType === 'team'
-                  ? 'https://op.gg/multisearch/euw?summoners=...'
-                  : 'https://op.gg/summoners/euw/Faker-KR1'
-              }
-              className="input w-full"
-              required
-            />
-            <p className="text-xs text-text-muted mt-1">
-              {importType === 'team'
-                ? 'Füge die URL von OP.GG Multisearch mit allen 5 Spielern ein'
-                : 'Füge die URL eines einzelnen Spielers von OP.GG ein'}
-            </p>
-          </div>
-
-          {/* Team-specific fields */}
-          {importType === 'team' && (
-            <>
-              {/* Team Name */}
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Team Name
-                </label>
-                <input
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="z.B. BIG Academy"
-                  className="input w-full"
-                  required
-                />
-              </div>
-
-              {/* Team Tag */}
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Team Tag
-                </label>
-                <input
-                  type="text"
-                  value={teamTag}
-                  onChange={(e) => setTeamTag(e.target.value)}
-                  placeholder="z.B. BIGA"
-                  className="input w-full"
-                  required
-                  maxLength={10}
-                />
-              </div>
-            </>
+          {/* Conditional Input based on import type */}
+          {importType === 'team' ? (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                PrimeLeague Team URL
+              </label>
+              <input
+                type="url"
+                value={primeleagueUrl}
+                onChange={(e) => setPrimeleagueUrl(e.target.value)}
+                placeholder="https://www.primeleague.gg/de/leagues/.../teams/..."
+                className="input w-full"
+                required
+              />
+              <p className="text-xs text-text-muted mt-1">
+                Füge den Link zur PrimeLeague Team-Seite ein. Team Name, Tag, Logo und bestätigte Spieler werden automatisch importiert.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                OP.GG Spieler URL
+              </label>
+              <input
+                type="url"
+                value={opggUrl}
+                onChange={(e) => setOpggUrl(e.target.value)}
+                placeholder="https://op.gg/summoners/euw/Faker-KR1"
+                className="input w-full"
+                required
+              />
+              <p className="text-xs text-text-muted mt-1">
+                Füge die URL eines einzelnen Spielers von OP.GG ein
+              </p>
+            </div>
           )}
 
           {/* Error Message */}

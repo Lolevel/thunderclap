@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, memo, useCallback } from 'react';
 import { Lock, Unlock, Edit2, Trash2, Plus, Check, X } from 'lucide-react';
+import RoleIcon from '../RoleIcon';
+import { getSummonerIconUrl, handleSummonerIconError } from '../../utils/summonerHelper';
 
 /**
  * Roster Manager Component
@@ -15,11 +17,45 @@ export default function RosterManager({
   onLockRoster,
   onUnlockRoster,
   onSelectRoster,
-  currentRoster
+  currentRoster,
+  predictions // Add predictions prop
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [editingRoster, setEditingRoster] = useState(null);
   const currentRosterId = onSelectRoster ? currentRoster?.id : null;
+
+  // Memoize callbacks to prevent unnecessary re-renders
+  const handleCreate = useCallback(() => setIsCreating(true), []);
+  const handleCancelCreate = useCallback(() => setIsCreating(false), []);
+  const handleSaveCreate = useCallback((roster) => {
+    onCreateRoster(roster);
+    setIsCreating(false);
+  }, [onCreateRoster]);
+
+  const handleStartEdit = useCallback((roster) => setEditingRoster(roster), []);
+  const handleCancelEdit = useCallback(() => setEditingRoster(null), []);
+  const handleSaveEdit = useCallback((roster) => {
+    onUpdateRoster(editingRoster.id, roster);
+    setEditingRoster(null);
+  }, [editingRoster, onUpdateRoster]);
+
+  // Create predicted roster
+  const handleCreatePredicted = useCallback(() => {
+    if (!predictions || predictions.length === 0) return;
+
+    const predictedLineup = predictions[0].predicted_lineup;
+    const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+    const rosterArray = roleOrder
+      .filter(role => predictedLineup[role])
+      .map(role => ({
+        player_id: predictedLineup[role].player_id,
+        summoner_name: predictedLineup[role].player_name,
+        profile_icon_id: predictedLineup[role].profile_icon_id,
+        role: role
+      }));
+
+    onCreateRoster({ name: 'Predicted Lineup', roster: rosterArray });
+  }, [predictions, onCreateRoster]);
 
   return (
     <div className="space-y-4">
@@ -34,7 +70,7 @@ export default function RosterManager({
 
         {!lockedRoster && (
           <button
-            onClick={() => setIsCreating(true)}
+            onClick={handleCreate}
             className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg shadow-purple-500/20 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -71,11 +107,8 @@ export default function RosterManager({
       {isCreating && (
         <RosterForm
           availablePlayers={availablePlayers}
-          onSave={(roster) => {
-            onCreateRoster(roster);
-            setIsCreating(false);
-          }}
-          onCancel={() => setIsCreating(false)}
+          onSave={handleSaveCreate}
+          onCancel={handleCancelCreate}
         />
       )}
 
@@ -84,33 +117,140 @@ export default function RosterManager({
         <RosterForm
           availablePlayers={availablePlayers}
           initialRoster={editingRoster}
-          onSave={(roster) => {
-            onUpdateRoster(editingRoster.id, roster);
-            setEditingRoster(null);
-          }}
-          onCancel={() => setEditingRoster(null)}
+          onSave={handleSaveEdit}
+          onCancel={handleCancelEdit}
         />
       )}
 
       {/* Roster List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {rosters.filter(r => !r.is_locked).map(roster => (
-          <RosterCard
-            key={roster.id}
-            roster={roster}
-            isSelected={roster.id === currentRosterId}
-            onEdit={() => setEditingRoster(roster)}
-            onDelete={() => onDeleteRoster(roster.id)}
-            onLock={() => onLockRoster(roster.id)}
-            onSelect={() => onSelectRoster(roster.id)}
-          />
-        ))}
+        {rosters.filter(r => !r.is_locked).map(roster => {
+          // Create stable callbacks per roster
+          const handleEdit = () => handleStartEdit(roster);
+          const handleDelete = () => onDeleteRoster(roster.id);
+          const handleLock = () => onLockRoster(roster.id);
+          const handleSelect = () => onSelectRoster(roster.id);
+
+          return (
+            <RosterCard
+              key={roster.id}
+              roster={roster}
+              isSelected={roster.id === currentRosterId}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onLock={handleLock}
+              onSelect={handleSelect}
+            />
+          );
+        })}
       </div>
 
-      {rosters.length === 0 && !isCreating && (
-        <div className="text-center py-12 text-text-secondary">
-          <p>No rosters yet. Create one to get started!</p>
+      {rosters.length === 0 && !isCreating && !editingRoster && (
+        <div className="text-center py-12 bg-slate-800/40 rounded-xl border border-slate-700/50">
+          <p className="text-slate-400 mb-4">No rosters yet. Create one to get started!</p>
+          <div className="flex items-center justify-center gap-3">
+            {predictions && predictions.length > 0 && (
+              <button
+                onClick={handleCreatePredicted}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 shadow-lg shadow-blue-500/20 inline-flex items-center gap-2"
+              >
+                <Check className="w-5 h-5" />
+                Load Predicted Lineup
+              </button>
+            )}
+            <button
+              onClick={handleCreate}
+              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg shadow-purple-500/20 inline-flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              Create Custom Roster
+            </button>
+          </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Custom Player Selector Component
+function PlayerSelector({ role, availablePlayers, selectedPlayer, onSelect, alreadySelectedPlayerIds }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const roleNames = { TOP: 'Top', JUNGLE: 'Jungle', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Support' };
+
+  // Filter out already selected players (except current selection)
+  const availableOptions = availablePlayers.filter(
+    p => !alreadySelectedPlayerIds.includes(p.player_id) || p.player_id === selectedPlayer?.player_id
+  );
+
+  return (
+    <div className="relative">
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-3 px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg cursor-pointer hover:border-purple-500 transition-colors"
+      >
+        <div className="w-10 h-10 rounded-full bg-slate-600/50 border border-slate-600 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+          {selectedPlayer ? (
+            <>
+              <img
+                src={getSummonerIconUrl(selectedPlayer.profile_icon_id)}
+                alt={selectedPlayer.summoner_name}
+                onError={handleSummonerIconError}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center">
+                <RoleIcon role={role} size={10} />
+              </div>
+            </>
+          ) : (
+            <RoleIcon role={role} size={20} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-slate-400 mb-0.5">{roleNames[role]}</div>
+          <div className="text-sm text-white truncate">
+            {selectedPlayer ? selectedPlayer.summoner_name : 'Select player...'}
+          </div>
+        </div>
+      </div>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-20 mt-1 w-full bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+            {availableOptions.length === 0 ? (
+              <div className="px-4 py-3 text-sm text-slate-400 text-center">
+                No available players
+              </div>
+            ) : (
+              availableOptions.map(player => (
+                <div
+                  key={player.player_id}
+                  onClick={() => {
+                    onSelect(role, player.player_id);
+                    setIsOpen(false);
+                  }}
+                  className={`px-4 py-3 hover:bg-slate-700 cursor-pointer transition-colors flex items-center gap-3 ${
+                    selectedPlayer?.player_id === player.player_id ? 'bg-purple-500/20' : ''
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-700 border border-slate-600 overflow-hidden flex-shrink-0">
+                    <img
+                      src={getSummonerIconUrl(player.player?.profile_icon_id)}
+                      alt={player.player?.summoner_name}
+                      onError={handleSummonerIconError}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-white truncate">
+                      {player.player?.summoner_name || 'Unknown'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
       )}
     </div>
   );
@@ -135,6 +275,7 @@ function RosterForm({ availablePlayers, initialRoster, onSave, onCancel }) {
     const playerData = {
       player_id: teamRosterEntry.player_id,
       summoner_name: teamRosterEntry.player?.summoner_name || 'Unknown',
+      profile_icon_id: teamRosterEntry.player?.profile_icon_id,
       role: role
     };
 
@@ -182,24 +323,19 @@ function RosterForm({ availablePlayers, initialRoster, onSave, onCancel }) {
       <div className="space-y-3 mb-6">
         {roles.map(role => {
           const currentPlayer = selectedPlayers.find(p => p.role === role);
+          const alreadySelectedPlayerIds = selectedPlayers
+            .filter(p => p.role !== role)
+            .map(p => p.player_id);
+
           return (
-            <div key={role} className="flex items-center gap-4">
-              <div className="w-24 text-sm font-medium text-slate-400">
-                {roleNames[role]}
-              </div>
-              <select
-                value={currentPlayer?.player_id || ''}
-                onChange={(e) => handlePlayerSelect(role, e.target.value)}
-                className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg focus:outline-none focus:border-purple-500 text-white transition-colors cursor-pointer"
-              >
-                <option value="" className="bg-slate-800">Select player...</option>
-                {availablePlayers.map(player => (
-                  <option key={player.player_id} value={player.player_id} className="bg-slate-800">
-                    {player.player?.summoner_name} ({player.player?.current_rank || 'Unranked'})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <PlayerSelector
+              key={role}
+              role={role}
+              availablePlayers={availablePlayers}
+              selectedPlayer={currentPlayer}
+              onSelect={handlePlayerSelect}
+              alreadySelectedPlayerIds={alreadySelectedPlayerIds}
+            />
           );
         })}
       </div>
@@ -230,17 +366,18 @@ function RosterForm({ availablePlayers, initialRoster, onSave, onCancel }) {
   );
 }
 
-// Roster Card
-function RosterCard({ roster, isSelected, onEdit, onDelete, onLock, onSelect }) {
+// Roster Card - Memoized to prevent unnecessary re-renders
+const RosterCard = memo(function RosterCard({ roster, isSelected, onEdit, onDelete, onLock, onSelect }) {
   const roleNames = { TOP: 'Top', JUNGLE: 'Jng', MIDDLE: 'Mid', BOTTOM: 'Bot', UTILITY: 'Sup' };
 
   return (
     <div
       className={`
-        rounded-xl backdrop-blur p-4 transition-all duration-300 cursor-pointer
+        rounded-xl backdrop-blur p-4 cursor-pointer border-2
+        transition-[background-color,border-color,box-shadow] duration-200
         ${isSelected
-          ? 'bg-purple-500/20 border-2 border-purple-500 shadow-lg shadow-purple-500/30'
-          : 'bg-slate-800/40 border border-slate-700/50 hover:border-purple-500/50'
+          ? 'bg-purple-500/20 border-purple-500 shadow-lg shadow-purple-500/30'
+          : 'bg-slate-800/40 border-slate-700/50 hover:border-purple-500/50'
         }
       `}
       onClick={onSelect}
@@ -276,13 +413,30 @@ function RosterCard({ roster, isSelected, onEdit, onDelete, onLock, onSelect }) 
       </div>
 
       {/* Players */}
-      <div className="space-y-1.5 mb-3">
-        {roster.roster.map((player, i) => (
-          <div key={i} className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400 w-12">{roleNames[player.role]}</span>
-            <span className="truncate text-slate-200">{player.summoner_name}</span>
-          </div>
-        ))}
+      <div className="grid grid-cols-5 gap-2 mb-3">
+        {roster.roster.map((player, i) => {
+          return (
+            <div key={i} className="flex flex-col items-center gap-1.5">
+              {/* Role Icon above */}
+              <div className="w-5 h-5 flex items-center justify-center">
+                <RoleIcon role={player.role} size={16} />
+              </div>
+              {/* Player Avatar */}
+              <div className="w-12 h-12 rounded-full bg-slate-700/50 border-2 border-slate-600 overflow-hidden">
+                <img
+                  src={getSummonerIconUrl(player.profile_icon_id)}
+                  alt={player.summoner_name}
+                  onError={handleSummonerIconError}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {/* Player Name */}
+              <div className="text-[10px] text-slate-400 text-center truncate w-full px-1">
+                {player.summoner_name}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Footer */}
@@ -302,4 +456,4 @@ function RosterCard({ roster, isSelected, onEdit, onDelete, onLock, onSelect }) 
       </div>
     </div>
   );
-}
+});
