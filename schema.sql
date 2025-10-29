@@ -1,6 +1,6 @@
 -- Prime League Scout Database Schema
 -- PostgreSQL 15+
--- Last Updated: 2025-10-21
+-- Last Updated: 2025-10-29
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -14,6 +14,7 @@ CREATE TABLE teams (
     name VARCHAR(100) NOT NULL,
     tag VARCHAR(10),
     prime_league_id VARCHAR(50) UNIQUE,
+    prime_league_url TEXT,
     opgg_url TEXT,
     division VARCHAR(50),
     current_split VARCHAR(20),
@@ -451,3 +452,83 @@ CREATE INDEX idx_scouting_reports_opponent ON scouting_reports(opponent_team_id,
 -- Draft scenarios
 CREATE INDEX idx_draft_scenarios_team ON draft_scenarios(team_id, side, display_order);
 CREATE INDEX idx_draft_scenarios_active ON draft_scenarios(team_id, is_active) WHERE is_active = true;
+
+-- ============================================================
+-- GAME PREPARATION SYSTEM (Phase-based)
+-- ============================================================
+
+-- Game Prep Rosters (3 sets: Krugs, Raptors, Wolves)
+CREATE TABLE IF NOT EXISTS game_prep_rosters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,  -- e.g., "Krugs", "Raptors", "Wolves"
+    roster JSONB NOT NULL,  -- [{"player_id": "uuid", "role": "TOP", "summoner_name": "..."}, ...]
+    is_locked BOOLEAN DEFAULT false,
+    locked_at TIMESTAMP,
+    locked_by VARCHAR(100),
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT roster_has_5_players CHECK (jsonb_array_length(roster) = 5)
+);
+
+-- Draft Scenarios (New version for Game Prep)
+CREATE TABLE IF NOT EXISTS draft_scenarios_new (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    roster_id UUID REFERENCES game_prep_rosters(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,  -- e.g., "Baron", "Drake", "Gromp"
+    side VARCHAR(10) NOT NULL CHECK (side IN ('blue', 'red')),
+    blue_bans JSONB DEFAULT '[]',
+    red_bans JSONB DEFAULT '[]',
+    blue_picks JSONB DEFAULT '[]',
+    red_picks JSONB DEFAULT '[]',
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Game Prep Comments (3 levels: global, roster, scenario)
+CREATE TABLE IF NOT EXISTS game_prep_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    level VARCHAR(20) NOT NULL CHECK (level IN ('global', 'roster', 'scenario')),
+    roster_id UUID REFERENCES game_prep_rosters(id) ON DELETE CASCADE,
+    scenario_id UUID REFERENCES draft_scenarios_new(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    author VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT global_comment_no_refs CHECK (
+        (level = 'global' AND roster_id IS NULL AND scenario_id IS NULL) OR (level != 'global')
+    ),
+    CONSTRAINT roster_comment_has_roster CHECK (
+        (level = 'roster' AND roster_id IS NOT NULL AND scenario_id IS NULL) OR (level != 'roster')
+    ),
+    CONSTRAINT scenario_comment_has_scenario CHECK (
+        (level = 'scenario' AND scenario_id IS NOT NULL) OR (level != 'scenario')
+    )
+);
+
+-- ============================================================
+-- MIGRATION TRACKING
+-- ============================================================
+
+-- Schema migrations tracking table (used by auto_migrate.py)
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id SERIAL PRIMARY KEY,
+    migration_name VARCHAR(255) UNIQUE NOT NULL,
+    executed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================
+-- ADDITIONAL INDEXES FOR GAME PREP
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_game_prep_rosters_team ON game_prep_rosters(team_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_game_prep_rosters_locked ON game_prep_rosters(team_id, is_locked) WHERE is_locked = true;
+CREATE INDEX IF NOT EXISTS idx_draft_scenarios_new_team ON draft_scenarios_new(team_id, roster_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_draft_scenarios_new_roster ON draft_scenarios_new(roster_id);
+CREATE INDEX IF NOT EXISTS idx_game_prep_comments_team ON game_prep_comments(team_id, level);
+CREATE INDEX IF NOT EXISTS idx_game_prep_comments_roster ON game_prep_comments(roster_id) WHERE roster_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_game_prep_comments_scenario ON game_prep_comments(scenario_id) WHERE scenario_id IS NOT NULL;

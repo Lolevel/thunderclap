@@ -55,8 +55,16 @@ Das System führt automatisch alle fehlenden Migrationen aus.
 
 ## Bestehende Migrationen
 
-- `game_prep_schema.sql` - Game Preparation System (Rosters, Scenarios, Comments)
-- `006_add_prime_league_url.sql` - PrimeLeague URL Spalte für Teams
+- `001_initial_schema.sql` - Baseline marker für initiales Schema
+- `002_add_game_prep_system.sql` - Game Preparation System (Rosters, Scenarios, Comments)
+- `003_add_prime_league_url.sql` - PrimeLeague URL Spalte für Teams
+
+## Naming Convention
+
+Migrationen folgen dem Schema: `NNN_beschreibung.sql`
+- `NNN` = Dreistellige Nummer (001, 002, 003...)
+- `beschreibung` = Kurze, snake_case Beschreibung
+- Beispiel: `004_add_user_roles.sql`
 
 ## Troubleshooting
 

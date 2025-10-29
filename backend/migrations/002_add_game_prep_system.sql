@@ -1,8 +1,9 @@
--- ============================================================
--- Game Prep System - Complete Schema
--- ============================================================
--- Phase-based system: Roster → Scenarios → Comments
--- Lock feature for final roster selection
+-- Migration: 002_add_game_prep_system
+-- Date: 2025-10-28
+-- Description: Add Game Preparation System tables (rosters, scenarios, comments)
+
+-- This is a copy of game_prep_schema.sql for migration tracking purposes
+-- The actual tables may already exist, hence using IF NOT EXISTS
 
 -- ============================================================
 -- 1. GAME PREP ROSTERS
@@ -129,7 +130,6 @@ WHERE scenario_id IS NOT NULL;
 -- ============================================================
 DO $$
 BEGIN
-    RAISE NOTICE '✓ Game Prep Schema created successfully';
-    RAISE NOTICE '✓ Tables: game_prep_rosters, draft_scenarios, game_prep_comments';
-    RAISE NOTICE '✓ Features: Phase-based, Lock mechanism, 3-level comments';
+    RAISE NOTICE '✓ Game Prep System tables created/verified';
+    RAISE NOTICE '✓ Tables: game_prep_rosters, draft_scenarios_new, game_prep_comments';
 END $$;
