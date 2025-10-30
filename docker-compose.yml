@@ -18,6 +18,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - pl_scout_network
 
   # Redis Cache (optional)
   redis:
@@ -33,6 +35,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - pl_scout_network
 
   # Backend API
   backend:
@@ -80,6 +84,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - pl_scout_network
 
   # Frontend
   frontend:
@@ -96,7 +102,7 @@ services:
     depends_on:
       - backend
     environment:
-      - VITE_API_URL=http://${DOMAIN_BACKEND}/api
+      - VITE_API_URL=${DOMAIN_BACKEND}/api
     command: npm run dev -- --host
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:5173/"]
@@ -104,11 +110,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - pl_scout_network
 
 volumes:
   postgres_data:
   redis_data:
 
 networks:
-  default:
-    name: pl_scout_network
+  pl_scout_network:
+    external: true
