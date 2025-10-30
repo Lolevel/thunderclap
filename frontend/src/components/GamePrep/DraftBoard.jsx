@@ -299,7 +299,7 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
               return (
                 <div
                   key={key}
-                  className={index === 3 ? 'mt-4' : ''}
+                  className={index === 3 ? 'mt-8' : ''}
                 >
                   <PickSlot
                     champion={champion}
@@ -354,7 +354,7 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
               return (
                 <div
                   key={key}
-                  className={index === 3 ? 'mt-4' : ''}
+                  className={index === 3 ? 'mt-8' : ''}
                 >
                   <PickSlot
                     champion={champion}
