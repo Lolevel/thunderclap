@@ -10,7 +10,7 @@ from .prediction import LineupPrediction
 from .scouting import ScoutingReport
 from .champion import Champion
 from .access_token import AccessToken
-from .game_prep_new import GamePrepRoster, DraftScenarioNew, GamePrepComment
+from .game_prep import GamePrepRoster, DraftScenario, GamePrepComment
 
 __all__ = [
     "Team",
@@ -29,6 +29,6 @@ __all__ = [
     "Champion",
     "AccessToken",
     "GamePrepRoster",
-    "DraftScenarioNew",
+    "DraftScenario",
     "GamePrepComment",
 ]

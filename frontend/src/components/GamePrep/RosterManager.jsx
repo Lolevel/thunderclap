@@ -3,6 +3,19 @@ import { Lock, Unlock, Edit2, Trash2, Plus, Check, X } from 'lucide-react';
 import RoleIcon from '../RoleIcon';
 import { getSummonerIconUrl, handleSummonerIconError } from '../../utils/summonerHelper';
 
+// Helper function to get rank icon URL
+function getRankIconUrl(tier, division) {
+  if (!tier) return null;
+  const tierLower = tier.toLowerCase();
+  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/${tierLower}.png`;
+}
+
+// Helper function to convert division to Roman numeral
+function divisionToRoman(division) {
+  const romanMap = { 'IV': 'IV', 'III': 'III', 'II': 'II', 'I': 'I' };
+  return romanMap[division] || '';
+}
+
 /**
  * Roster Manager Component
  * Phase 1: Select and save roster (5 players)
@@ -54,6 +67,9 @@ export default function RosterManager({
         role: role
       }));
 
+    console.log('[RosterManager] Creating predicted roster:', rosterArray);
+    console.log('[RosterManager] Profile icon IDs:', rosterArray.map(p => ({ name: p.summoner_name, icon_id: p.profile_icon_id })));
+
     onCreateRoster({ name: 'Predicted Lineup', roster: rosterArray });
   }, [predictions, onCreateRoster]);
 
@@ -79,26 +95,73 @@ export default function RosterManager({
         )}
       </div>
 
-      {/* Locked Roster Banner */}
-      {lockedRoster && (
-        <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4 backdrop-blur">
-          <div className="flex items-center justify-between">
+      {/* Locked Roster Display */}
+      {lockedRoster && lockedRoster.roster && (
+        <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/50 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <Lock className="w-5 h-5 text-purple-400" />
               <div>
-                <div className="font-semibold text-white">Locked: {lockedRoster.name}</div>
-                <div className="text-sm text-slate-400">
+                <h3 className="text-lg font-bold text-purple-300">{lockedRoster.name}</h3>
+                <p className="text-xs text-purple-400/80">
                   Locked by {lockedRoster.locked_by} on {new Date(lockedRoster.locked_at).toLocaleDateString()}
-                </div>
+                </p>
               </div>
             </div>
             <button
               onClick={() => onUnlockRoster(lockedRoster.id)}
-              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2"
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2 border border-slate-600 hover:border-slate-500"
             >
               <Unlock className="w-4 h-4" />
               Unlock
             </button>
+          </div>
+
+          <div className="grid grid-cols-5 gap-3">
+            {lockedRoster.roster.map((player) => (
+              <div
+                key={player.player_id}
+                className="bg-slate-800/50 border border-purple-500/30 rounded-lg p-3"
+              >
+                {/* Role Icon and Elo - Centered with Divider */}
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <RoleIcon role={player.role} size={20} />
+                  {player.soloq_tier && (
+                    <>
+                      <div className="h-4 w-px bg-slate-600"></div>
+                      <div className="flex items-center gap-1">
+                        <img
+                          src={getRankIconUrl(player.soloq_tier, player.soloq_division)}
+                          alt={player.soloq_tier}
+                          className="w-5 h-5"
+                          onError={(e) => e.target.style.display = 'none'}
+                        />
+                        {player.soloq_division && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(player.soloq_tier) && (
+                          <span className="text-xs font-semibold text-slate-300">
+                            {divisionToRoman(player.soloq_division)}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Player Info with Icon */}
+                <div className="flex items-center gap-2 mb-2">
+                  <img
+                    src={getSummonerIconUrl(player.profile_icon_id)}
+                    alt={player.summoner_name}
+                    onError={handleSummonerIconError}
+                    className="w-10 h-10 rounded-full border-2 border-purple-500/50"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">
+                      {player.summoner_name}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -122,28 +185,30 @@ export default function RosterManager({
         />
       )}
 
-      {/* Roster List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {rosters.filter(r => !r.is_locked).map(roster => {
-          // Create stable callbacks per roster
-          const handleEdit = () => handleStartEdit(roster);
-          const handleDelete = () => onDeleteRoster(roster.id);
-          const handleLock = () => onLockRoster(roster.id);
-          const handleSelect = () => onSelectRoster(roster.id);
+      {/* Roster List - Hide when one is locked */}
+      {!lockedRoster && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {rosters.filter(r => !r.is_locked).map(roster => {
+            // Create stable callbacks per roster
+            const handleEdit = () => handleStartEdit(roster);
+            const handleDelete = () => onDeleteRoster(roster.id);
+            const handleLock = () => onLockRoster(roster.id);
+            const handleSelect = () => onSelectRoster(roster.id);
 
-          return (
-            <RosterCard
-              key={roster.id}
-              roster={roster}
-              isSelected={roster.id === currentRosterId}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onLock={handleLock}
-              onSelect={handleSelect}
-            />
-          );
-        })}
-      </div>
+            return (
+              <RosterCard
+                key={roster.id}
+                roster={roster}
+                isSelected={roster.id === currentRosterId}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onLock={handleLock}
+                onSelect={handleSelect}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {rosters.length === 0 && !isCreating && !editingRoster && (
         <div className="text-center py-12 bg-slate-800/40 rounded-xl border border-slate-700/50">
@@ -415,6 +480,16 @@ const RosterCard = memo(function RosterCard({ roster, isSelected, onEdit, onDele
       {/* Players */}
       <div className="grid grid-cols-5 gap-2 mb-3">
         {roster.roster.map((player, i) => {
+          // Handle both nested and flat player data structures
+          const profileIconId = player.profile_icon_id || player.player?.profile_icon_id;
+          const summonerName = player.summoner_name || player.player?.summoner_name || 'Unknown';
+
+          // Debug log for first player only
+          if (i === 0) {
+            console.log('[RosterCard] Player data:', player);
+            console.log('[RosterCard] Profile icon ID:', profileIconId);
+          }
+
           return (
             <div key={i} className="flex flex-col items-center gap-1.5">
               {/* Role Icon above */}
@@ -424,15 +499,15 @@ const RosterCard = memo(function RosterCard({ roster, isSelected, onEdit, onDele
               {/* Player Avatar */}
               <div className="w-12 h-12 rounded-full bg-slate-700/50 border-2 border-slate-600 overflow-hidden">
                 <img
-                  src={getSummonerIconUrl(player.profile_icon_id)}
-                  alt={player.summoner_name}
+                  src={getSummonerIconUrl(profileIconId)}
+                  alt={summonerName}
                   onError={handleSummonerIconError}
                   className="w-full h-full object-cover"
                 />
               </div>
               {/* Player Name */}
               <div className="text-[10px] text-slate-400 text-center truncate w-full px-1">
-                {player.summoner_name}
+                {summonerName}
               </div>
             </div>
           );

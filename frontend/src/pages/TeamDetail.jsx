@@ -29,7 +29,7 @@ import ChampionPoolTab from '../components/ChampionPoolTab';
 import InDepthStatsTab from '../components/InDepthStatsTab';
 import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
-import GamePrepTab from '../components/GamePrepTabNew';
+import GamePrepTab from '../components/GamePrepTab';
 import RefreshProgressModal from '../components/RefreshProgressModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';

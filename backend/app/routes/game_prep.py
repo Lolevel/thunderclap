@@ -3,7 +3,7 @@ Game Prep API Routes - Phase-based Draft Preparation
 """
 from flask import Blueprint, request, jsonify
 from app import db
-from app.models.game_prep_new import GamePrepRoster, DraftScenarioNew, GamePrepComment
+from app.models.game_prep import GamePrepRoster, DraftScenario, GamePrepComment
 from app.middleware.auth import require_auth
 import random
 
@@ -143,7 +143,7 @@ def unlock_roster(roster_id):
 @bp.route('/rosters/<roster_id>/scenarios', methods=['GET'])
 def get_scenarios(roster_id):
     """Get all scenarios for a roster"""
-    scenarios = DraftScenarioNew.query.filter_by(roster_id=roster_id).order_by(DraftScenarioNew.display_order).all()
+    scenarios = DraftScenario.query.filter_by(roster_id=roster_id).order_by(DraftScenario.display_order).all()
     return jsonify([s.to_dict() for s in scenarios])
 
 
@@ -154,10 +154,10 @@ def create_scenario(roster_id):
     data = request.json
 
     # Get existing scenario names for this roster
-    existing = DraftScenarioNew.query.filter_by(roster_id=roster_id).all()
+    existing = DraftScenario.query.filter_by(roster_id=roster_id).all()
     existing_names = [s.name for s in existing]
 
-    scenario = DraftScenarioNew(
+    scenario = DraftScenario(
         team_id=roster.team_id,
         roster_id=roster_id,
         name=data.get('name') or get_random_monster_name(existing_names),
@@ -178,7 +178,7 @@ def create_scenario(roster_id):
 @bp.route('/scenarios/<scenario_id>', methods=['PUT'])
 def update_scenario(scenario_id):
     """Update a scenario"""
-    scenario = DraftScenarioNew.query.get_or_404(scenario_id)
+    scenario = DraftScenario.query.get_or_404(scenario_id)
     data = request.json
 
     # Update fields
@@ -204,7 +204,7 @@ def update_scenario(scenario_id):
 @bp.route('/scenarios/<scenario_id>', methods=['DELETE'])
 def delete_scenario(scenario_id):
     """Delete a scenario"""
-    scenario = DraftScenarioNew.query.get_or_404(scenario_id)
+    scenario = DraftScenario.query.get_or_404(scenario_id)
     db.session.delete(scenario)
     db.session.commit()
     return '', 204

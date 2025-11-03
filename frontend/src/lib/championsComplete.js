@@ -1,14 +1,31 @@
 /**
  * Complete Champion List for League of Legends
- * All 168 champions as of Patch 14.23
+ * All 172 champions as of latest patch (includes Ambessa, Mel, Yunara)
+ * Uses Community Dragon CDN for latest assets (no patch version needed)
  */
 
-const PATCH_VERSION = '14.23.1';
-const DDRAGON_BASE = `https://ddragon.leagueoflegends.com/cdn/${PATCH_VERSION}`;
+/**
+ * Get champion icon URL by champion ID
+ * Uses Community Dragon which provides latest assets automatically
+ */
+export function getChampionIconById(championId) {
+  if (!championId) return null;
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
+}
 
+/**
+ * Get champion icon URL by champion key (name)
+ * Uses Community Dragon which provides latest assets automatically
+ */
 export function getChampionIcon(championKey) {
   if (!championKey) return null;
-  return `${DDRAGON_BASE}/img/champion/${championKey}.png`;
+  // Map key to champion ID for Community Dragon
+  const champion = CHAMPIONS.find(c => c.key === championKey);
+  if (champion) {
+    return getChampionIconById(champion.id);
+  }
+  // Fallback to Data Dragon if champion not in our list
+  return `https://ddragon.leagueoflegends.com/cdn/14.24.1/img/champion/${championKey}.png`;
 }
 
 export const CHAMPIONS = [
@@ -17,6 +34,7 @@ export const CHAMPIONS = [
   { id: 84, key: 'Akali', name: 'Akali', roles: ['mid', 'top'] },
   { id: 166, key: 'Akshan', name: 'Akshan', roles: ['mid', 'top'] },
   { id: 12, key: 'Alistar', name: 'Alistar', roles: ['support'] },
+  { id: 799, key: 'Ambessa', name: 'Ambessa', roles: ['top'] },
   { id: 32, key: 'Amumu', name: 'Amumu', roles: ['jungle'] },
   { id: 34, key: 'Anivia', name: 'Anivia', roles: ['mid'] },
   { id: 1, key: 'Annie', name: 'Annie', roles: ['mid'] },
@@ -92,6 +110,7 @@ export const CHAMPIONS = [
   { id: 90, key: 'Malzahar', name: 'Malzahar', roles: ['mid'] },
   { id: 57, key: 'Maokai', name: 'Maokai', roles: ['support', 'jungle'] },
   { id: 11, key: 'MasterYi', name: 'Master Yi', roles: ['jungle'] },
+  { id: 800, key: 'Mel', name: 'Mel', roles: ['support', 'mid'] },
   { id: 902, key: 'Milio', name: 'Milio', roles: ['support'] },
   { id: 21, key: 'MissFortune', name: 'Miss Fortune', roles: ['bot'] },
   { id: 62, key: 'MonkeyKing', name: 'Wukong', roles: ['jungle', 'top'] },
@@ -171,6 +190,7 @@ export const CHAMPIONS = [
   { id: 777, key: 'Yone', name: 'Yone', roles: ['mid', 'top'] },
   { id: 83, key: 'Yorick', name: 'Yorick', roles: ['top'] },
   { id: 350, key: 'Yuumi', name: 'Yuumi', roles: ['support'] },
+  { id: 804, key: 'Yunara', name: 'Yunara', roles: ['bot', 'jungle'] },
   { id: 154, key: 'Zac', name: 'Zac', roles: ['jungle'] },
   { id: 238, key: 'Zed', name: 'Zed', roles: ['mid'] },
   { id: 221, key: 'Zeri', name: 'Zeri', roles: ['bot'] },

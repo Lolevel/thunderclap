@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, AlertCircle, CheckCircle, Users, User } from 'lucide-react';
-import api from '../config/api';
+import api from '../lib/api';
 
 const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
   const [importType, setImportType] = useState('team'); // 'team' or 'player'

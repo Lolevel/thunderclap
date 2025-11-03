@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { User, Trophy, TrendingUp, ArrowLeft, Trash2 } from 'lucide-react';
-import api from '../config/api';
+import api from '../lib/api';
 import { usePlayer, usePlayerChampions } from '../hooks/api/usePlayer';
 import { useTeams, useTeamRoster } from '../hooks/api/useTeam';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';

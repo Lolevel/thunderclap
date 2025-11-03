@@ -3,7 +3,7 @@
  * Generate and open OP.GG URLs for players and teams
  */
 
-import api from '../config/api';
+import api from '../lib/api';
 
 /**
  * Get OP.GG URL for a single player

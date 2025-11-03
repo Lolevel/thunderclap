@@ -6,6 +6,7 @@ Endpoints for champion data management
 from flask import Blueprint, jsonify, request
 from app.utils.community_dragon import sync_champions_from_community_dragon, get_champion_by_id
 from app.models.champion import Champion
+from app.utils.patch_tracker import get_current_patch
 from app.middleware.auth import require_auth
 import logging
 
@@ -108,3 +109,22 @@ def get_champion(champion_id: int):
         }), 404
 
     return jsonify(champion.to_dict()), 200
+
+
+@champions_bp.route('/patch', methods=['GET'])
+def get_patch_version():
+    """
+    Get current League of Legends patch version
+
+    GET /api/champions/patch
+
+    Returns:
+        {
+            'patch': str  # e.g., "14.24" or "latest"
+        }
+    """
+    patch = get_current_patch()
+
+    return jsonify({
+        'patch': patch
+    }), 200

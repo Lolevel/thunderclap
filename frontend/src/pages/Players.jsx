@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Search } from 'lucide-react';
-import api from '../config/api';
+import api from '../lib/api';
 import RoleIcon from '../components/RoleIcon';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 import { usePlayers } from '../hooks/api/usePlayer';

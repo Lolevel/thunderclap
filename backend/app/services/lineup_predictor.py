@@ -95,6 +95,7 @@ class LineupPredictor:
                 role: {
                     'player_id': str(player_id),
                     'player_name': Player.query.get(player_id).summoner_name,
+                    'profile_icon_id': Player.query.get(player_id).profile_icon_id,
                     'confidence': round(confidence * 100, 2)
                 }
                 for role, (player_id, confidence) in predicted_lineup.items()
@@ -192,6 +193,7 @@ class LineupPredictor:
                     role: {
                         'player_id': str(player_id),
                         'player_name': Player.query.get(player_id).summoner_name,
+                        'profile_icon_id': Player.query.get(player_id).profile_icon_id,
                         'confidence': round(confidence * 100, 2),
                         'role': role
                     }

@@ -34,7 +34,12 @@
       "Bash(rm:*)",
       "Bash(docker-compose logs:*)",
       "WebFetch(domain:raw.communitydragon.org)",
-      "Bash(docker-compose ps:*)"
+      "Bash(docker-compose ps:*)",
+      "Bash(xargs sed -i \"s|from ''''../config/api''''|from ''''../lib/api''''|g\")",
+      "Bash(xargs sed -i \"s|from ''''../../config/api''''|from ''''../../lib/api''''|g\")",
+      "Bash(dos2unix:*)",
+      "Bash(docker-compose exec:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

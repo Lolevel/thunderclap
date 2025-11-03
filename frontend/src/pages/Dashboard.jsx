@@ -12,6 +12,7 @@ import { useTeams } from '../hooks/api/useTeam';
 import { cacheKeys } from '../lib/cacheKeys';
 import ImportTeamModal from '../components/ImportTeamModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
+import TeamLogo from '../components/TeamLogo';
 
 const Dashboard = () => {
 	const navigate = useNavigate();
@@ -156,13 +157,12 @@ const Dashboard = () => {
 
 									<div className="relative flex items-center justify-between">
 										<div className="flex items-center gap-3 flex-1 min-w-0">
-											<div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow duration-300">
-												<span className="text-white font-bold text-sm">
-													{team.name
-														.charAt(0)
-														.toUpperCase()}
-												</span>
-											</div>
+											<TeamLogo
+												logoUrl={team.logo_url}
+												teamName={team.name}
+												size="sm"
+												className="w-10 h-10 group-hover:shadow-blue-500/40 transition-shadow duration-300"
+											/>
 											<div className="min-w-0 flex-1">
 												<h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors truncate">
 													{team.name}

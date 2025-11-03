@@ -1,190 +1,283 @@
 import { useState, useCallback } from 'react';
-import { Search, X } from 'lucide-react';
-import { CHAMPIONS, searchChampions, getChampionIcon, LANE_FILTERS } from '../../lib/championsComplete';
+import { Search, X, ChevronLeft, ChevronRight, ChevronsDown, ChevronsUp, Lock } from 'lucide-react';
+import { CHAMPIONS, getChampionIcon, getChampionIconById } from '../../lib/championsComplete';
 import RoleIcon from '../RoleIcon';
+import { Link } from 'react-router-dom';
+import { getSummonerIconUrl, handleSummonerIconError } from '../../utils/summonerHelper';
+import useSWR from 'swr';
 
 /**
- * Draft Board Component
- * Visual: Like LoL Draft
- * - Bans horizontal (top)
- * - Picks vertical (sides)
- * - Champions in center
- * - Drag & Drop + Click to select
+ * Draft Board Component with Priority System
+ * - 1st Priority: Main champion (displayed large)
+ * - 2nd/3rd Priority: Alternative champions (expandable)
+ * - Blue side expands left, Red side expands right
  */
-export default function DraftBoard({ scenario, onUpdate, teamName }) {
+export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRoles, setSelectedRoles] = useState([]); // Multi-select role filter
-  const [selectedSlot, setSelectedSlot] = useState(null); // {type: 'ban'|'pick', side: 'blue'|'red', index: 0}
-  const [selectedChampion, setSelectedChampion] = useState(null); // Champion selected from pool
+  const [selectedRoles, setSelectedRoles] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [selectedChampion, setSelectedChampion] = useState(null);
   const [draggedChampion, setDraggedChampion] = useState(null);
-  const [draggedFromSlot, setDraggedFromSlot] = useState(null); // {type, side, index}
-  const [updateTrigger, setUpdateTrigger] = useState(0); // Force re-render trigger
+  const [draggedFromSlot, setDraggedFromSlot] = useState(null);
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+  const [expandedSlots, setExpandedSlots] = useState({}); // Track which slots are expanded
+  const [showAllPrios, setShowAllPrios] = useState(false); // Global toggle for all priorities
 
-  // Filter champions by search and selected roles
+  // Filter champions
   const filteredChampions = CHAMPIONS.filter(champ => {
-    // Search filter
     if (searchQuery && !champ.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
-    // Role filter (if any roles selected)
     if (selectedRoles.length > 0) {
       return selectedRoles.some(role => champ.roles?.includes(role));
     }
     return true;
   });
 
-  // Toggle role filter
   const toggleRoleFilter = (role) => {
     setSelectedRoles(prev =>
       prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
     );
   };
 
-  // Handle champion click from pool
-  const handleChampionPoolClick = useCallback((champion) => {
-    // If a slot is selected, place champion there
-    if (selectedSlot) {
-      const { type, side, index } = selectedSlot;
+  // Normalize champion data - always return array
+  const normalizeChampions = (data) => {
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    return [data];
+  };
 
-      if (type === 'ban') {
-        const bansKey = `${side}_bans`;
-        const newBans = [...(scenario[bansKey] || [])];
-        newBans[index] = { champion_id: champion.id, champion_key: champion.key, order: index + 1 };
-        onUpdate({ [bansKey]: newBans });
-      } else {
-        const picksKey = `${side}_picks`;
-        const newPicks = [...(scenario[picksKey] || [])];
-        newPicks[index] = { champion_id: champion.id, champion_key: champion.key, role: getRoleForIndex(index) };
-        onUpdate({ [picksKey]: newPicks });
+  // Toggle slot expansion
+  const toggleSlotExpansion = (type, side, index) => {
+    const key = `${type}-${side}-${index}`;
+    setExpandedSlots(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  // Check if slot is expanded (global override or individual)
+  const isSlotExpanded = (type, side, index) => {
+    if (showAllPrios) return true; // Global override
+    const key = `${type}-${side}-${index}`;
+    return expandedSlots[key] || false;
+  };
+
+  // Add champion to slot at specific priority position
+  const addChampionAtPriority = useCallback((champion, type, side, index, targetPriority) => {
+    const key = type === 'ban' ? `${side}_bans` : `${side}_picks`;
+    const newArray = [...(scenario[key] || [])];
+    const currentChampions = normalizeChampions(newArray[index]);
+
+    // Handle both champion pool items (id/key) and existing picks (champion_id/champion_key)
+    const championId = champion.champion_id || champion.id;
+    const championKey = champion.champion_key || champion.key;
+
+    // Check if champion already exists in this slot
+    const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+
+    // Limit to max 5 priorities - block if trying to add a new champion when already at limit
+    if (!alreadyExists && currentChampions.length >= 5) {
+      return; // Block adding new champions when at max capacity
+    }
+
+    // Remove if already exists (for reordering)
+    const filtered = currentChampions.filter(c => c.champion_id !== championId);
+
+    // Insert at target priority position
+    const newChampion = {
+      champion_id: championId,
+      champion_key: championKey,
+      role: champion.isRolePlaceholder ? champion.role : (champion.role || (type === 'pick' ? getRoleForIndex(index) : undefined)),
+      priority: targetPriority,
+      isRolePlaceholder: champion.isRolePlaceholder || false,
+      ...(type === 'ban' && { order: index + 1 })
+    };
+
+    filtered.splice(targetPriority - 1, 0, newChampion);
+
+    // Re-assign priorities
+    newArray[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+    onUpdate({ [key]: newArray });
+    setUpdateTrigger(prev => prev + 1);
+  }, [scenario, onUpdate]);
+
+  // Add champion to slot (as priority)
+  const addChampionToSlot = useCallback((champion, type, side, index) => {
+    if (type === 'ban') {
+      const bansKey = `${side}_bans`;
+      const newBans = [...(scenario[bansKey] || [])];
+      const currentChampions = normalizeChampions(newBans[index]);
+
+      // Limit to max 5 priorities (1 main + 4 secondary)
+      if (currentChampions.length >= 5) {
+        return; // Don't add more than 5
       }
 
-      setSelectedSlot(null);
-      setSelectedChampion(null);
-      setUpdateTrigger(prev => prev + 1);
+      // Check if champion already exists
+      const championId = champion.isRolePlaceholder ? champion.id : champion.id;
+      if (!currentChampions.some(c => c.champion_id === championId)) {
+        newBans[index] = [...currentChampions, {
+          champion_id: championId,
+          champion_key: champion.key,
+          order: index + 1,
+          priority: currentChampions.length + 1,
+          isRolePlaceholder: champion.isRolePlaceholder || false,
+          role: champion.isRolePlaceholder ? champion.role : undefined
+        }];
+        onUpdate({ [bansKey]: newBans });
+      }
     } else {
-      // No slot selected - select champion and wait for slot click
+      const picksKey = `${side}_picks`;
+      const newPicks = [...(scenario[picksKey] || [])];
+      const currentChampions = normalizeChampions(newPicks[index]);
+
+      // Limit to max 5 priorities (1 main + 4 secondary)
+      if (currentChampions.length >= 5) {
+        return; // Don't add more than 5
+      }
+
+      // Check if champion already exists
+      const championId = champion.isRolePlaceholder ? champion.id : champion.id;
+      if (!currentChampions.some(c => c.champion_id === championId)) {
+        newPicks[index] = [...currentChampions, {
+          champion_id: championId,
+          champion_key: champion.key,
+          role: champion.isRolePlaceholder ? champion.role : getRoleForIndex(index),
+          priority: currentChampions.length + 1,
+          isRolePlaceholder: champion.isRolePlaceholder || false
+        }];
+        onUpdate({ [picksKey]: newPicks });
+      }
+    }
+    setUpdateTrigger(prev => prev + 1);
+  }, [scenario, onUpdate]);
+
+  // Handle champion click from pool
+  const handleChampionPoolClick = useCallback((champion) => {
+    if (selectedSlot) {
+      const { type, side, index } = selectedSlot;
+      addChampionToSlot(champion, type, side, index);
+      setSelectedChampion(null);
+    } else {
       setSelectedChampion(champion);
     }
-  }, [selectedSlot, scenario, onUpdate]);
+  }, [selectedSlot, addChampionToSlot]);
 
-  // Handle slot click when champion is already selected
+  // Handle slot click
   const handleSlotClick = useCallback((type, side, index) => {
     const isSelected = selectedSlot?.type === type && selectedSlot?.side === side && selectedSlot?.index === index;
 
-    // If champion selected from pool, place it here
     if (selectedChampion) {
-      if (type === 'ban') {
-        const bansKey = `${side}_bans`;
-        const newBans = [...(scenario[bansKey] || [])];
-        newBans[index] = { champion_id: selectedChampion.id, champion_key: selectedChampion.key, order: index + 1 };
-        onUpdate({ [bansKey]: newBans });
-      } else {
-        const picksKey = `${side}_picks`;
-        const newPicks = [...(scenario[picksKey] || [])];
-        newPicks[index] = { champion_id: selectedChampion.id, champion_key: selectedChampion.key, role: getRoleForIndex(index) };
-        onUpdate({ [picksKey]: newPicks });
-      }
-
+      addChampionToSlot(selectedChampion, type, side, index);
       setSelectedChampion(null);
-      setUpdateTrigger(prev => prev + 1);
     } else {
-      // Toggle slot selection
       if (isSelected) {
         setSelectedSlot(null);
       } else {
         setSelectedSlot({ type, side, index });
       }
     }
-  }, [selectedChampion, selectedSlot, scenario, onUpdate]);
+  }, [selectedChampion, selectedSlot, addChampionToSlot]);
 
-  // Drag & Drop handlers
-  const handleDragStart = (e, champion) => {
-    setDraggedChampion(champion);
-    e.dataTransfer.effectAllowed = 'copy';
-  };
-
-  // Drag start from slot (pick/ban)
-  const handleSlotDragStart = (e, champion, type, side, index) => {
-    setDraggedChampion(champion);
-    setDraggedFromSlot({ type, side, index });
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = draggedFromSlot ? 'move' : 'copy';
-  };
-
-  const handleDrop = useCallback((e, type, side, index) => {
-    e.preventDefault();
-    if (!draggedChampion) return;
-
-    // If dragging from another slot, remove from old slot first
-    if (draggedFromSlot) {
-      const { type: oldType, side: oldSide, index: oldIndex } = draggedFromSlot;
-
-      if (oldType === 'ban') {
-        const oldBansKey = `${oldSide}_bans`;
-        const oldBans = [...(scenario[oldBansKey] || [])];
-        oldBans[oldIndex] = null;
-        onUpdate({ [oldBansKey]: oldBans });
-      } else {
-        const oldPicksKey = `${oldSide}_picks`;
-        const oldPicks = [...(scenario[oldPicksKey] || [])];
-        oldPicks[oldIndex] = null;
-        onUpdate({ [oldPicksKey]: oldPicks });
-      }
-    }
-
-    // Place champion in the new slot
+  // Remove champion from slot
+  const removeChampion = (type, side, index, championId) => {
     if (type === 'ban') {
       const bansKey = `${side}_bans`;
       const newBans = [...(scenario[bansKey] || [])];
-      newBans[index] = { champion_id: draggedChampion.id, champion_key: draggedChampion.key, order: index + 1 };
+      const currentChampions = normalizeChampions(newBans[index]);
+
+      if (championId) {
+        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+        // Re-assign priorities
+        newBans[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+        if (newBans[index].length === 0) newBans[index] = null;
+      } else {
+        newBans[index] = null;
+      }
+
       onUpdate({ [bansKey]: newBans });
     } else {
       const picksKey = `${side}_picks`;
       const newPicks = [...(scenario[picksKey] || [])];
-      newPicks[index] = { champion_id: draggedChampion.id, champion_key: draggedChampion.key, role: getRoleForIndex(index) };
+      const currentChampions = normalizeChampions(newPicks[index]);
+
+      if (championId) {
+        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+        // Re-assign priorities
+        newPicks[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+        if (newPicks[index].length === 0) newPicks[index] = null;
+      } else {
+        newPicks[index] = null;
+      }
+
       onUpdate({ [picksKey]: newPicks });
+    }
+    setUpdateTrigger(prev => prev + 1);
+  };
+
+  // Drag & Drop handlers
+  const handleDragStart = useCallback((e, champion, fromSlot = null) => {
+    setDraggedChampion(champion);
+    setDraggedFromSlot(fromSlot);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((e, type, side, index) => {
+    e.preventDefault();
+
+    if (draggedChampion) {
+      // Remove from old slot if dragged from a slot
+      if (draggedFromSlot) {
+        const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
+        removeChampion(fromType, fromSide, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+      }
+
+      // Add to new slot
+      addChampionToSlot(draggedChampion, type, side, index);
     }
 
     setDraggedChampion(null);
     setDraggedFromSlot(null);
-    setSelectedSlot(null);
-    setUpdateTrigger(prev => prev + 1);
-  }, [draggedChampion, draggedFromSlot, scenario, onUpdate]);
+  }, [draggedChampion, draggedFromSlot, addChampionToSlot, removeChampion]);
 
-  // Remove champion from slot
-  const removeChampion = (type, side, index) => {
-    if (type === 'ban') {
-      const bansKey = `${side}_bans`;
-      const newBans = [...(scenario[bansKey] || [])];
-      newBans[index] = null;
-      onUpdate({ [bansKey]: newBans });
-    } else {
-      const picksKey = `${side}_picks`;
-      const newPicks = [...(scenario[picksKey] || [])];
-      newPicks[index] = null;
-      onUpdate({ [picksKey]: newPicks });
-    }
-  };
-
-  // Get role for pick index (TOP, JUNGLE, MID, BOT, SUPPORT)
   const getRoleForIndex = (index) => {
     const roles = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
     return roles[index] || 'UNKNOWN';
   };
 
-  // Determine team names based on side
-  const ourSide = scenario.side; // 'blue' or 'red'
+  const ourSide = scenario.side;
   const opponentSide = ourSide === 'blue' ? 'red' : 'blue';
-  const ourTeamName = teamName;
-  const opponentTeamName = 'Opponent';
+  const ourTeamName = 'Wir';
+  const opponentTeamName = teamName;
 
   return (
     <div className="space-y-6">
-      {/* Search Only */}
+      {/* Locked Roster Display */}
+      {lockedRoster && lockedRoster.roster && (
+        <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/50 rounded-lg p-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Lock className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-bold text-purple-300">Locked Roster</h3>
+            </div>
+            <span className="text-sm text-purple-400/80">— {lockedRoster.name}</span>
+          </div>
+
+          <div className="grid grid-cols-5 gap-3">
+            {lockedRoster.roster.map((player) => (
+              <PlayerCardWithChampionPool key={player.player_id} player={player} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
       <div className="flex gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
@@ -198,7 +291,7 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
         </div>
       </div>
 
-      {/* Draft Layout: Like LoL Client - Bans top, Picks vertical sides, Champions center */}
+      {/* Draft Layout */}
       <div className="space-y-6">
         {/* Team Names */}
         <div className="grid grid-cols-2 gap-4">
@@ -216,123 +309,209 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
           </div>
         </div>
 
-        {/* Bans Row (Top) with Role Filter in center */}
+        {/* Bans Row with Role Filter */}
         <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center">
-          {/* Blue Bans - Align right */}
+          {/* Blue Bans */}
           <div className="flex gap-2 justify-end">
             {[0, 1, 2, 3, 4].map(index => {
-              const champion = scenario.blue_bans?.[index];
-              const key = `blue-ban-${index}-${champion?.champion_key || 'empty'}-${updateTrigger}`;
+              const champions = normalizeChampions(scenario.blue_bans?.[index]);
+              const key = `blue-ban-${index}-${updateTrigger}`;
               const isSelected = selectedSlot?.type === 'ban' && selectedSlot?.side === 'blue' && selectedSlot?.index === index;
+              const isExpanded = isSlotExpanded('ban', 'blue', index);
+
               return (
-                <>
-                  <BanSlot
-                    key={key}
-                    champion={champion}
-                    onSelect={() => handleSlotClick('ban', 'blue', index)}
-                    onDrop={(e) => handleDrop(e, 'ban', 'blue', index)}
-                    onRemove={() => removeChampion('ban', 'blue', index)}
-                    onDragStart={(e) => champion && handleSlotDragStart(e, champion, 'ban', 'blue', index)}
-                    isSelected={isSelected}
-                  />
-                  {/* Gap after 3rd ban (index 2) to show ban phases */}
+                <div key={key} className="relative">
                   {index === 2 && <div className="w-4" />}
-                </>
-              );
-            })}
-          </div>
-
-          {/* Role Filter - Center */}
-          <div className="flex gap-2 px-4">
-            {['top', 'jungle', 'mid', 'bot', 'support'].map(role => {
-              const isActive = selectedRoles.includes(role);
-              return (
-                <button
-                  key={role}
-                  onClick={() => toggleRoleFilter(role)}
-                  className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center transition-all ${
-                    isActive
-                      ? 'bg-purple-500/20 border-purple-500'
-                      : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
-                  }`}
-                  title={role.charAt(0).toUpperCase() + role.slice(1)}
-                >
-                  <RoleIcon role={role.toUpperCase()} size={20} />
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Red Bans - Align left */}
-          <div className="flex gap-2 justify-start">
-            {[0, 1, 2, 3, 4].map(index => {
-              const champion = scenario.red_bans?.[index];
-              const key = `red-ban-${index}-${champion?.champion_key || 'empty'}-${updateTrigger}`;
-              const isSelected = selectedSlot?.type === 'ban' && selectedSlot?.side === 'red' && selectedSlot?.index === index;
-              return (
-                <>
-                  <BanSlot
-                    key={key}
-                    champion={champion}
-                    onSelect={() => handleSlotClick('ban', 'red', index)}
-                    onDrop={(e) => handleDrop(e, 'ban', 'red', index)}
-                    onRemove={() => removeChampion('ban', 'red', index)}
-                    onDragStart={(e) => champion && handleSlotDragStart(e, champion, 'ban', 'red', index)}
-                    isSelected={isSelected}
-                  />
-                  {/* Gap after 3rd ban (index 2) to show ban phases */}
-                  {index === 2 && <div className="w-4" />}
-                </>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Main Draft Area: Picks (Vertical) + Champions (Center) */}
-        <div className="grid grid-cols-[120px_1fr_120px] gap-4">
-          {/* Blue Picks (Left - Vertical) */}
-          <div className="space-y-2">
-            {[0, 1, 2, 3, 4].map(index => {
-              const champion = scenario.blue_picks?.[index];
-              const key = `blue-pick-${index}-${champion?.champion_key || 'empty'}-${updateTrigger}`;
-              const isSelected = selectedSlot?.type === 'pick' && selectedSlot?.side === 'blue' && selectedSlot?.index === index;
-              return (
-                <div
-                  key={key}
-                  className={index === 3 ? 'mt-8' : ''}
-                >
-                  <PickSlot
-                    champion={champion}
+                  <BanSlotWithPrio
+                    champions={champions}
                     side="blue"
-                    pickNumber={index + 1}
-                    onSelect={() => handleSlotClick('pick', 'blue', index)}
-                    onDrop={(e) => handleDrop(e, 'pick', 'blue', index)}
-                    onRemove={() => removeChampion('pick', 'blue', index)}
-                    onDragStart={(e) => champion && handleSlotDragStart(e, champion, 'pick', 'blue', index)}
+                    onSelect={() => handleSlotClick('ban', 'blue', index)}
+                    onRemoveChampion={(championId) => removeChampion('ban', 'blue', index, championId)}
                     isSelected={isSelected}
+                    isExpanded={isExpanded}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, 'ban', 'blue', index)}
+                    onDropAtPriority={(e, priority) => {
+                      e.preventDefault();
+                      if (draggedChampion) {
+                        if (draggedFromSlot) {
+                          const { type, side, index: fromIndex } = draggedFromSlot;
+                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                        }
+                        addChampionAtPriority(draggedChampion, 'ban', 'blue', index, priority);
+                        setDraggedChampion(null);
+                        setDraggedFromSlot(null);
+                      }
+                    }}
+                    slotInfo={{ type: 'ban', side: 'blue', index }}
                   />
                 </div>
               );
             })}
           </div>
 
-          {/* Champions Grid (Center) - Drop zone for removal */}
+          {/* Role Filter */}
+          <div className="flex flex-col gap-2 px-4">
+            <div className="flex gap-2">
+              {['top', 'jungle', 'mid', 'bot', 'support'].map(role => {
+                const isActive = selectedRoles.includes(role);
+                return (
+                  <button
+                    key={role}
+                    onClick={() => toggleRoleFilter(role)}
+                    draggable
+                    onDragStart={(e) => {
+                      const rolePlaceholder = {
+                        id: `role-${role}`,
+                        key: role,
+                        name: role.charAt(0).toUpperCase() + role.slice(1),
+                        isRolePlaceholder: true,
+                        role: role.toUpperCase()
+                      };
+                      handleDragStart(e, rolePlaceholder);
+                    }}
+                    className={`w-10 h-10 rounded-lg border-2 flex items-center justify-center transition-all cursor-move ${
+                      isActive
+                        ? 'bg-purple-500/20 border-purple-500'
+                        : 'bg-slate-800/50 border-slate-700 hover:border-slate-600'
+                    }`}
+                    title={`${role.charAt(0).toUpperCase() + role.slice(1)} (Click to filter, Drag to add as placeholder)`}
+                  >
+                    <RoleIcon role={role.toUpperCase()} size={20} />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Global Priority Toggle */}
+            <button
+              onClick={() => setShowAllPrios(!showAllPrios)}
+              className={`px-3 py-1.5 rounded-lg border-2 transition-all flex items-center justify-center gap-1.5 text-xs font-semibold ${
+                showAllPrios
+                  ? 'bg-purple-500/20 border-purple-500 text-purple-300'
+                  : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-600'
+              }`}
+              title="Toggle all priorities"
+            >
+              {showAllPrios ? (
+                <>
+                  <ChevronsUp className="w-3.5 h-3.5" />
+                  Prios ausblenden
+                </>
+              ) : (
+                <>
+                  <ChevronsDown className="w-3.5 h-3.5" />
+                  Alle Prios einblenden
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Red Bans */}
+          <div className="flex gap-2 justify-start">
+            {[0, 1, 2, 3, 4].map(index => {
+              const champions = normalizeChampions(scenario.red_bans?.[index]);
+              const key = `red-ban-${index}-${updateTrigger}`;
+              const isSelected = selectedSlot?.type === 'ban' && selectedSlot?.side === 'red' && selectedSlot?.index === index;
+              const isExpanded = isSlotExpanded('ban', 'red', index);
+
+              return (
+                <div key={key} className="relative">
+                  {index === 2 && <div className="w-4" />}
+                  <BanSlotWithPrio
+                    champions={champions}
+                    side="red"
+                    onSelect={() => handleSlotClick('ban', 'red', index)}
+                    onRemoveChampion={(championId) => removeChampion('ban', 'red', index, championId)}
+                    isSelected={isSelected}
+                    isExpanded={isExpanded}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, 'ban', 'red', index)}
+                    onDropAtPriority={(e, priority) => {
+                      e.preventDefault();
+                      if (draggedChampion) {
+                        if (draggedFromSlot) {
+                          const { type, side, index: fromIndex } = draggedFromSlot;
+                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                        }
+                        addChampionAtPriority(draggedChampion, 'ban', 'red', index, priority);
+                        setDraggedChampion(null);
+                        setDraggedFromSlot(null);
+                      }
+                    }}
+                    slotInfo={{ type: 'ban', side: 'red', index }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Main Draft Area: Picks + Champions */}
+        <div className="flex gap-8 items-center justify-center">
+          {/* Blue Picks - Main picks INSIDE, prios expand OUTSIDE (left) */}
+          <div className={`space-y-2 flex flex-col items-start transition-all ${showAllPrios ? 'w-[260px]' : 'w-[130px]'}`}>
+            {[0, 1, 2, 3, 4].map(index => {
+              const champions = normalizeChampions(scenario.blue_picks?.[index]);
+              const key = `blue-pick-${index}-${updateTrigger}`;
+              const isSelected = selectedSlot?.type === 'pick' && selectedSlot?.side === 'blue' && selectedSlot?.index === index;
+              const isExpanded = isSlotExpanded('pick', 'blue', index);
+
+              return (
+                <div key={key} className={index === 3 ? 'mt-8' : ''}>
+                  <PickSlotWithPrio
+                    champions={champions}
+                    side="blue"
+                    pickNumber={index + 1}
+                    onSelect={() => handleSlotClick('pick', 'blue', index)}
+                    onRemoveChampion={(championId) => removeChampion('pick', 'blue', index, championId)}
+                    isSelected={isSelected}
+                    isExpanded={isExpanded}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, 'pick', 'blue', index)}
+                    onDropAtPriority={(e, priority) => {
+                      e.preventDefault();
+                      if (draggedChampion) {
+                        if (draggedFromSlot) {
+                          const { type, side, index: fromIndex } = draggedFromSlot;
+                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                        }
+                        addChampionAtPriority(draggedChampion, 'pick', 'blue', index, priority);
+                        setDraggedChampion(null);
+                        setDraggedFromSlot(null);
+                      }
+                    }}
+                    slotInfo={{ type: 'pick', side: 'blue', index }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Champions Grid - Larger when collapsed, more compact when expanded */}
           <div
-            className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50 max-h-[600px] overflow-y-auto"
+            className={`bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-y-auto transition-all ${
+              showAllPrios
+                ? 'p-2 max-h-[500px] w-[500px]'
+                : 'p-4 max-h-[650px] w-[700px]'
+            }`}
             onDragOver={handleDragOver}
             onDrop={(e) => {
               e.preventDefault();
               // If dragging from a slot, remove the champion
               if (draggedFromSlot) {
                 const { type, side, index } = draggedFromSlot;
-                removeChampion(type, side, index);
+                removeChampion(type, side, index, draggedChampion.champion_id || draggedChampion.id);
                 setDraggedChampion(null);
                 setDraggedFromSlot(null);
                 setUpdateTrigger(prev => prev + 1);
               }
             }}
           >
-            <div className="grid grid-cols-10 gap-1.5">
+            <div className={`grid gap-2 ${showAllPrios ? 'grid-cols-7' : 'grid-cols-8'}`}>
               {filteredChampions.map(champion => (
                 <ChampionIcon
                   key={champion.id}
@@ -345,26 +524,40 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
             </div>
           </div>
 
-          {/* Red Picks (Right - Vertical) */}
-          <div className="space-y-2">
+          {/* Red Picks - Main picks INSIDE, prios expand OUTSIDE (right) */}
+          <div className={`space-y-2 flex flex-col items-end transition-all ${showAllPrios ? 'w-[260px]' : 'w-[130px]'}`}>
             {[0, 1, 2, 3, 4].map(index => {
-              const champion = scenario.red_picks?.[index];
-              const key = `red-pick-${index}-${champion?.champion_key || 'empty'}-${updateTrigger}`;
+              const champions = normalizeChampions(scenario.red_picks?.[index]);
+              const key = `red-pick-${index}-${updateTrigger}`;
               const isSelected = selectedSlot?.type === 'pick' && selectedSlot?.side === 'red' && selectedSlot?.index === index;
+              const isExpanded = isSlotExpanded('pick', 'red', index);
+
               return (
-                <div
-                  key={key}
-                  className={index === 3 ? 'mt-8' : ''}
-                >
-                  <PickSlot
-                    champion={champion}
+                <div key={key} className={index === 3 ? 'mt-8' : ''}>
+                  <PickSlotWithPrio
+                    champions={champions}
                     side="red"
                     pickNumber={index + 1}
                     onSelect={() => handleSlotClick('pick', 'red', index)}
-                    onDrop={(e) => handleDrop(e, 'pick', 'red', index)}
-                    onRemove={() => removeChampion('pick', 'red', index)}
-                    onDragStart={(e) => champion && handleSlotDragStart(e, champion, 'pick', 'red', index)}
+                    onRemoveChampion={(championId) => removeChampion('pick', 'red', index, championId)}
                     isSelected={isSelected}
+                    isExpanded={isExpanded}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, 'pick', 'red', index)}
+                    onDropAtPriority={(e, priority) => {
+                      e.preventDefault();
+                      if (draggedChampion) {
+                        if (draggedFromSlot) {
+                          const { type, side, index: fromIndex } = draggedFromSlot;
+                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                        }
+                        addChampionAtPriority(draggedChampion, 'pick', 'red', index, priority);
+                        setDraggedChampion(null);
+                        setDraggedFromSlot(null);
+                      }
+                    }}
+                    slotInfo={{ type: 'pick', side: 'red', index }}
                   />
                 </div>
               );
@@ -378,106 +571,300 @@ export default function DraftBoard({ scenario, onUpdate, teamName }) {
           Champion selected: {selectedChampion.name} - Click a slot to place it
         </div>
       )}
-    </div>
-  );
-}
 
-// Ban Slot Component (horizontal, like LoL client)
-function BanSlot({ champion, onSelect, onDrop, onRemove, onDragStart, isSelected }) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <div
-      onClick={onSelect}
-      draggable={!!champion}
-      onDragStart={onDragStart}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`
-        w-16 h-16 rounded-lg border-2 cursor-pointer
-        flex items-center justify-center relative overflow-hidden
-        transition-all
-        ${isSelected ? 'border-primary ring-2 ring-primary' : 'border-slate-700 hover:border-primary/50'}
-        ${champion ? 'bg-slate-800' : 'bg-slate-900/50'}
-      `}
-    >
-      {champion && champion.champion_key ? (
-        <>
-          <img
-            src={getChampionIcon(champion.champion_key)}
-            alt={champion.champion_key}
-            className="w-full h-full object-cover rounded-lg opacity-40 scale-115"
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <X className="w-6 h-6 text-red-500 stroke-[2]" />
-          </div>
-        </>
-      ) : (
-        <span className="text-[10px] text-slate-500">Ban</span>
-      )}
-    </div>
-  );
-}
-
-// Pick Slot Component (vertical, larger like LoL client)
-function PickSlot({ champion, side, pickNumber, onSelect, onDrop, onRemove, onDragStart, isSelected }) {
-  const [isHovered, setIsHovered] = useState(false);
-  const label = side === 'blue' ? `B${pickNumber}` : `R${pickNumber}`;
-
-  return (
-    <div
-      onClick={onSelect}
-      draggable={!!champion}
-      onDragStart={onDragStart}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDrop}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`
-        w-full aspect-square rounded-lg border-2 cursor-pointer
-        flex flex-col items-center justify-center relative overflow-hidden
-        transition-all
-        ${isSelected ? 'border-primary ring-2 ring-primary' : 'border-slate-700 hover:border-primary/50'}
-        ${champion ? 'bg-slate-800' : 'bg-slate-900/50'}
-      `}
-    >
-      {champion && champion.champion_key ? (
-        <>
-          <img
-            src={getChampionIcon(champion.champion_key)}
-            alt={champion.champion_key}
-            className="w-full h-full rounded-lg object-cover scale-115"
-          />
-          {/* Pick Label at bottom */}
-          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-slate-950/90 border border-slate-700 px-2 py-0.5 rounded text-[10px] font-semibold text-slate-300">
-            {label}
-          </div>
-        </>
-      ) : (
-        <div className="text-center">
-          <div className="text-xs text-slate-400">{label}</div>
+      {selectedSlot && (
+        <div className="text-center text-sm text-purple-400 font-semibold">
+          Slot selected - Click champions to add priorities
         </div>
       )}
     </div>
   );
 }
 
-// Champion Icon Component (draggable)
+// Ban Slot with Priority System
+function BanSlotWithPrio({ champions, side, onSelect, onRemoveChampion, isSelected, isExpanded, onDragStart, onDragOver, onDrop, onDropAtPriority, slotInfo }) {
+  const hasChampions = champions.length > 0;
+  const firstPrio = champions[0];
+  const otherPrios = champions.slice(1);
+  const hasPrios = otherPrios.length > 0;
+
+  return (
+    <div className="relative flex flex-col items-center">
+      {/* Prios expand UPWARD */}
+      {isExpanded && (
+        <div className="flex flex-col-reverse gap-0.5 mb-1 animate-fadeIn">
+          {[...Array(4)].map((_, idx) => {
+            const champion = otherPrios[idx];
+            const priority = idx + 2; // Priority 2-5
+            return (
+              <div key={idx} className="relative group">
+                <div
+                  className="w-8 h-8 rounded border border-slate-600 overflow-hidden bg-slate-800/50"
+                  onDragOver={onDragOver}
+                  onDrop={(e) => onDropAtPriority(e, priority)}
+                >
+                  {champion ? (
+                    <>
+                      {champion.isRolePlaceholder ? (
+                        <div
+                          className="w-full h-full flex items-center justify-center bg-slate-700/30 opacity-50 cursor-move"
+                          draggable
+                          onDragStart={(e) => onDragStart(e, champion, slotInfo)}
+                        >
+                          <RoleIcon role={champion.role || champion.champion_key?.toUpperCase()} size={12} />
+                        </div>
+                      ) : (
+                        <img
+                          src={getChampionIcon(champion.champion_key)}
+                          alt={champion.champion_key}
+                          className="w-full h-full object-cover opacity-50 scale-120"
+                          draggable
+                          onDragStart={(e) => onDragStart(e, champion, slotInfo)}
+                        />
+                      )}
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-[8px] px-1 rounded">
+                        {priority}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-1 h-1 rounded-full bg-slate-600/40" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Main Slot - Priority 1 */}
+      <div
+        onClick={onSelect}
+        onDragOver={onDragOver}
+        onDrop={(e) => onDropAtPriority(e, 1)}
+        className={`
+          rounded-lg border-2 cursor-pointer
+          flex items-center justify-center relative overflow-hidden
+          transition-all
+          ${isSelected ? 'border-primary ring-2 ring-primary' : 'border-slate-700 hover:border-primary/50'}
+          ${hasChampions ? 'bg-slate-800' : 'bg-slate-900/50'}
+          ${isExpanded ? 'w-12 h-12' : 'w-16 h-16'}
+        `}
+      >
+        {firstPrio ? (
+          <div className="relative w-full h-full group">
+            {firstPrio.isRolePlaceholder ? (
+              // Role Placeholder Display
+              <div
+                className="w-full h-full flex items-center justify-center bg-slate-700/30 opacity-50 cursor-move"
+                draggable
+                onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+              >
+                <RoleIcon role={firstPrio.role || firstPrio.champion_key?.toUpperCase()} size={isExpanded ? 20 : 28} />
+              </div>
+            ) : (
+              // Champion Display
+              <img
+                src={getChampionIcon(firstPrio.champion_key)}
+                alt={firstPrio.champion_key}
+                className="w-full h-full object-cover opacity-40 scale-120"
+                draggable
+                onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+              />
+            )}
+          </div>
+        ) : (
+          <span className={`${isExpanded ? 'text-[8px]' : 'text-[10px]'} text-slate-500`}>Ban</span>
+        )}
+
+        {/* Priority indicator - only visible when NOT expanded */}
+        {hasPrios && !isExpanded && (
+          <div className="absolute bottom-1 right-1 bg-purple-500/20 border-2 border-purple-500 text-purple-300 text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-lg shadow-purple-500/30 flex items-center gap-0.5">
+            +{otherPrios.length}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Pick Slot with Priority System
+function PickSlotWithPrio({ champions, side, pickNumber, onSelect, onRemoveChampion, isSelected, isExpanded, onDragStart, onDragOver, onDrop, onDropAtPriority, slotInfo }) {
+  const hasChampions = champions.length > 0;
+  const firstPrio = champions[0];
+  const otherPrios = champions.slice(1);
+  const label = side === 'blue' ? `B${pickNumber}` : `R${pickNumber}`;
+  const expandLeft = side === 'blue';
+  const hasPrios = otherPrios.length > 0;
+
+  return (
+    <div className={`relative flex items-center transition-all duration-300 ${expandLeft ? 'flex-row' : 'flex-row-reverse'}`} style={{ overflow: 'visible' }}>
+      {/* Prios expand OUTSIDE - Blue: to the left (reversed) / Red: to the right */}
+      {isExpanded && (
+        <div className={`flex gap-0.5 animate-fadeIn ${expandLeft ? 'mr-1 flex-row-reverse' : 'ml-1'}`}>
+          {[...Array(4)].map((_, idx) => {
+            const champion = otherPrios[idx];
+            const priority = idx + 2; // Priority 2-5
+            return (
+              <div key={idx} className="relative group">
+                <div
+                  className="w-10 h-10 rounded border border-slate-600 overflow-hidden bg-slate-800/50"
+                  onDragOver={onDragOver}
+                  onDrop={(e) => onDropAtPriority(e, priority)}
+                >
+                  {champion ? (
+                    <>
+                      {champion.isRolePlaceholder ? (
+                        <div
+                          className="w-full h-full flex items-center justify-center bg-slate-700/30 cursor-move"
+                          draggable
+                          onDragStart={(e) => onDragStart(e, champion, slotInfo)}
+                        >
+                          <RoleIcon role={champion.role || champion.champion_key?.toUpperCase()} size={16} />
+                        </div>
+                      ) : (
+                        <img
+                          src={getChampionIcon(champion.champion_key)}
+                          alt={champion.champion_key}
+                          className="w-full h-full object-cover scale-120"
+                          draggable
+                          onDragStart={(e) => onDragStart(e, champion, slotInfo)}
+                        />
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChampion(champion.champion_id);
+                        }}
+                        className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <X className="w-2.5 h-2.5 text-white" />
+                      </button>
+                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-[10px] px-1.5 rounded font-semibold">
+                        {priority}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-600/50" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Main Slot - Priority 1 */}
+      <div
+        onClick={onSelect}
+        onDragOver={onDragOver}
+        onDrop={(e) => onDropAtPriority(e, 1)}
+        className={`
+          rounded-lg border-2 cursor-pointer
+          flex items-center justify-center relative overflow-hidden
+          transition-all
+          ${isSelected ? 'border-primary ring-2 ring-primary' : 'border-slate-700 hover:border-primary/50'}
+          ${hasChampions ? 'bg-slate-800' : 'bg-slate-900/50'}
+          ${isExpanded ? 'w-20 h-20' : 'w-28 h-28'}
+        `}
+      >
+        {firstPrio ? (
+          <div className="relative w-full h-full group">
+            {firstPrio.isRolePlaceholder ? (
+              // Role Placeholder Display
+              <>
+                <div
+                  className="w-full h-full flex items-center justify-center bg-slate-700/30 cursor-move"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+                >
+                  <RoleIcon role={firstPrio.role || firstPrio.champion_key?.toUpperCase()} size={isExpanded ? 32 : 48} />
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveChampion(firstPrio.champion_id);
+                  }}
+                  className={`absolute top-1 right-1 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center ${
+                    isExpanded ? 'w-4 h-4' : 'w-5 h-5'
+                  }`}
+                >
+                  <X className={`text-white ${isExpanded ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
+                </button>
+                <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 bg-slate-950/90 border border-slate-700 px-2 py-0.5 rounded font-semibold text-slate-300 ${
+                  isExpanded ? 'text-[10px]' : 'text-xs'
+                }`}>
+                  {label}
+                </div>
+              </>
+            ) : (
+              // Champion Display
+              <>
+                <img
+                  src={getChampionIcon(firstPrio.champion_key)}
+                  alt={firstPrio.champion_key}
+                  className="w-full h-full object-cover scale-120"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+                />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveChampion(firstPrio.champion_id);
+                  }}
+                  className={`absolute top-1 right-1 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center ${
+                    isExpanded ? 'w-4 h-4' : 'w-5 h-5'
+                  }`}
+                >
+                  <X className={`text-white ${isExpanded ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} />
+                </button>
+                <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 bg-slate-950/90 border border-slate-700 px-2 py-0.5 rounded font-semibold text-slate-300 ${
+                  isExpanded ? 'text-[10px]' : 'text-xs'
+                }`}>
+                  {label}
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className={`${isExpanded ? 'text-xs' : 'text-base'} text-slate-400`}>{label}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Priority indicator - OUTSIDE the pick slot, only visible when NOT expanded */}
+      {hasPrios && !isExpanded && (
+        <div
+          className="absolute top-1/2 -translate-y-1/2 bg-purple-500/20 border-2 border-purple-500 text-purple-300 text-[11px] px-2 py-1 rounded-full font-bold shadow-lg shadow-purple-500/30 z-50 whitespace-nowrap"
+          style={{
+            [side === 'blue' ? 'left' : 'right']: '-3rem'
+          }}
+        >
+          +{otherPrios.length}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Champion Icon Component
 function ChampionIcon({ champion, onClick, onDragStart, isSelected }) {
   return (
     <div
+      onClick={onClick}
       draggable
       onDragStart={onDragStart}
-      onClick={onClick}
       className="relative group cursor-pointer hover:scale-105 transition-transform overflow-hidden rounded"
       title={champion.name}
     >
       <img
         src={getChampionIcon(champion.key)}
         alt={champion.name}
-        className={`w-full aspect-square rounded border-2 object-cover scale-115 transition-colors ${
+        className={`w-full aspect-square rounded border-2 object-cover scale-120 transition-colors ${
           isSelected ? 'border-green-400 ring-2 ring-green-400' : 'border-transparent group-hover:border-primary'
         }`}
       />
@@ -490,5 +877,122 @@ function ChampionIcon({ champion, onClick, onDragStart, isSelected }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Helper function to get rank icon URL
+function getRankIconUrl(tier, division) {
+  if (!tier) return null;
+  const tierLower = tier.toLowerCase();
+  return `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/${tierLower}.png`;
+}
+
+// Helper function to convert division to Roman numeral
+function divisionToRoman(division) {
+  const romanMap = { 'IV': 'IV', 'III': 'III', 'II': 'II', 'I': 'I' };
+  return romanMap[division] || '';
+}
+
+// Player Card with Champion Pool Hover
+function PlayerCardWithChampionPool({ player }) {
+  const [showChampionPool, setShowChampionPool] = useState(false);
+
+  // Fetch champion pool with SWR (prefetch immediately, not on hover)
+  const { data, isLoading } = useSWR(
+    `/players/${player.player_id}/champions/tournament`,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false
+    }
+  );
+
+  const championPool = data?.champions || [];
+
+  // Rank data
+  const hasRank = player.soloq_tier;
+  const tier = player.soloq_tier;
+  const division = player.soloq_division;
+
+  return (
+    <Link
+      to={`/players/${player.player_id}`}
+      className="bg-slate-800/50 border border-purple-500/30 rounded-lg p-3 hover:border-purple-500 hover:bg-slate-800/70 transition-all group relative"
+      onMouseEnter={() => setShowChampionPool(true)}
+      onMouseLeave={() => setShowChampionPool(false)}
+    >
+      {/* Role Icon and Elo - Centered with Divider */}
+      <div className="flex items-center justify-center gap-2 mb-3">
+        <RoleIcon role={player.role} size={20} />
+        {hasRank && (
+          <>
+            <div className="h-4 w-px bg-slate-600"></div>
+            <div className="flex items-center gap-1">
+              <img
+                src={getRankIconUrl(tier, division)}
+                alt={tier}
+                className="w-5 h-5"
+                onError={(e) => e.target.style.display = 'none'}
+              />
+              {division && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier) && (
+                <span className="text-xs font-semibold text-slate-300">
+                  {divisionToRoman(division)}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Player Info with Icon */}
+      <div className="flex items-center gap-2 mb-2">
+        <img
+          src={getSummonerIconUrl(player.profile_icon_id)}
+          alt={player.summoner_name}
+          onError={handleSummonerIconError}
+          className="w-10 h-10 rounded-full border-2 border-purple-500/50 group-hover:border-purple-500 transition-colors"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors truncate">
+            {player.summoner_name}
+          </div>
+        </div>
+      </div>
+
+      {/* Champion Pool Popup */}
+      {showChampionPool && (
+        <div className="absolute left-0 top-full mt-2 bg-slate-900 border-2 border-purple-500/50 rounded-lg p-3 shadow-xl shadow-purple-500/20 z-50 w-full overflow-y-auto" style={{ maxHeight: '290px' }}>
+          <div className="text-xs font-semibold text-purple-300 mb-2">Champion Pool (PL)</div>
+          {isLoading ? (
+            <div className="text-xs text-slate-400">Loading...</div>
+          ) : championPool.length > 0 ? (
+            <div className="space-y-2">
+              {championPool.map((champ, idx) => (
+                <div key={champ.champion_id || idx} className="flex items-center gap-2 bg-slate-800/50 rounded p-2">
+                  <img
+                    src={getChampionIconById(champ.champion_id)}
+                    alt={champ.champion_name}
+                    className="w-8 h-8 rounded"
+                    onError={(e) => {
+                      console.error('Failed to load champion icon:', champ.champion_id, champ.champion_name);
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-white truncate">
+                      {champ.champion_name}
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {champ.games_played} games • {champ.winrate?.toFixed(0) || 0}% WR
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400">No data available</div>
+          )}
+        </div>
+      )}
+    </Link>
   );
 }

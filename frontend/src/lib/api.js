@@ -1,6 +1,10 @@
 import axios from 'axios';
 
+// Use environment variable or fallback to localhost for development
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+console.log('[API Config] Base URL:', API_BASE_URL);
+console.log('[API Config] Mode:', import.meta.env.MODE);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +12,8 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Ensure credentials are sent with cross-origin requests
+  withCredentials: false,
 });
 
 // Request interceptor
@@ -29,18 +35,21 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle common errors
+    // Handle errors globally
+    console.error('API Error:', error.response?.data || error.message);
+
+    // Handle 401 Unauthorized - redirect to login
     if (error.response?.status === 401) {
-      // Unauthorized - clear token and redirect to login
       localStorage.removeItem('access_token');
       window.location.href = '/login';
     }
 
+    // Handle 429 Rate Limited
     if (error.response?.status === 429) {
-      // Rate limited by API
       console.warn('Rate limited by API - retrying after delay');
     }
 
+    // Handle 500 Server Error
     if (error.response?.status === 500) {
       console.error('Server error:', error.response?.data);
     }

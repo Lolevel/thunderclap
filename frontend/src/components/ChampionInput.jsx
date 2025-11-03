@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import api from '../config/api';
+import api from '../lib/api';
 
 const ChampionInput = ({ value, onChange, placeholder, teamId }) => {
 	const [inputValue, setInputValue] = useState(value || '');

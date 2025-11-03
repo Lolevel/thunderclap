@@ -7,7 +7,7 @@ import { cacheKeys } from '../../lib/cacheKeys';
  */
 export function usePlayers() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    '/players',
+    '/players?per_page=1000', // Fetch all players (high limit to avoid pagination)
     {
       refreshInterval: 300000, // 5 minutes
     }
@@ -15,6 +15,7 @@ export function usePlayers() {
 
   return {
     players: data?.players || [],
+    total: data?.total || 0,
     isLoading,
     isError: error,
     isValidating,
