@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import useSWR from 'swr';
 import {
 	Users,
@@ -35,6 +35,8 @@ import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
 import { useToast } from '../components/ToastContainer';
 import TeamLogo from '../components/TeamLogo';
+import { triggerTeamRefresh } from '../lib/api';
+import { useTeamRefreshStatus } from '../hooks/useTeamRefreshStatus';
 
 const TeamDetail = () => {
 	const { id } = useParams();
@@ -65,8 +67,10 @@ const TeamDetail = () => {
 
 	const [activeTab, setActiveTab] = useState('overview');
 	const [refreshing, setRefreshing] = useState(false);
+	const [refreshStatus, setRefreshStatus] = useState(null);
 	const [showProgressModal, setShowProgressModal] = useState(false);
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
+	const completedRef = useRef(false);
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
 
@@ -82,31 +86,86 @@ const TeamDetail = () => {
 		await removePlayer(playerId, deleteFromDb);
 	};
 
-	const handleRefreshData = () => {
-		setRefreshing(true);
-		setShowProgressModal(true);
-	};
+	// Poll for refresh status when refreshing
+	const currentRefreshStatus = useTeamRefreshStatus(id, {
+		enabled: refreshing,
+		onComplete: useCallback(async () => {
+			// Prevent double execution
+			if (completedRef.current) {
+				console.log('⚠️ onComplete already fired, skipping...');
+				return;
+			}
+			completedRef.current = true;
 
-	const handleRefreshComplete = async (data) => {
-		setShowProgressModal(false);
-		setRefreshing(false);
+			console.log('✅ Refresh completed! Reloading team data...');
+			try {
+				await refreshTeamData();
+				toast.success('✅ Team-Daten erfolgreich aktualisiert!', 4000);
+			} catch (error) {
+				console.error('Failed to reload team data:', error);
+				toast.error('Fehler beim Neuladen der Team-Daten', 5000);
+			} finally {
+				setRefreshing(false);
+				// Reset after 2 seconds
+				setTimeout(() => {
+					completedRef.current = false;
+				}, 2000);
+			}
+		}, [refreshTeamData]),
+		onFailed: useCallback(() => {
+			console.log('❌ Refresh failed!');
+			toast.error('Fehler beim Aktualisieren der Daten', 5000);
+			setRefreshing(false);
+		}, [])
+	});
 
-		// Show success toast
-		toast.success(
-			`Erfolgreich aktualisiert! ${data.matches_fetched + data.matches_linked} Matches, ${data.champions_updated} Champions`,
-			8000
-		);
+	// Store current status for progress bar
+	useEffect(() => {
+		if (currentRefreshStatus) {
+			setRefreshStatus(currentRefreshStatus);
 
-		// Refresh all team data
-		await refreshTeamData();
-	};
+			// If status is completed/failed and we're still showing as refreshing, stop it
+			if ((currentRefreshStatus.status === 'completed' || currentRefreshStatus.status === 'failed') && refreshing) {
+				console.log('⚠️ Status is', currentRefreshStatus.status, 'but refreshing is still true. Fixing...');
+				setRefreshing(false);
+			}
+		}
+	}, [currentRefreshStatus, refreshing]);
 
-	const handleRefreshError = (errorMessage) => {
-		setShowProgressModal(false);
-		setRefreshing(false);
+	// Check on mount if a refresh is already running
+	useEffect(() => {
+		const checkInitialStatus = async () => {
+			try {
+				const { getTeamRefreshStatus } = await import('../lib/api');
+				const response = await getTeamRefreshStatus(id);
+				const status = response.data;
+				console.log('📋 Initial refresh status:', status.status);
 
-		// Show error toast
-		toast.error(`Fehler beim Aktualisieren: ${errorMessage}`, 8000);
+				if (status.status === 'running') {
+					console.log('🔄 Refresh already running, starting to poll...');
+					setRefreshing(true);
+					setRefreshStatus(status);
+				}
+			} catch (error) {
+				console.error('Failed to check initial status:', error);
+			}
+		};
+
+		checkInitialStatus();
+	}, [id]);
+
+	const handleRefreshData = async () => {
+		try {
+			console.log('🚀 Starting refresh...');
+			completedRef.current = false; // Reset flag
+			setRefreshing(true);
+			await triggerTeamRefresh(id);
+			toast.success('Daten-Refresh gestartet', 3000);
+		} catch (error) {
+			console.error('Failed to trigger refresh:', error);
+			toast.error('Fehler beim Starten des Refresh', 5000);
+			setRefreshing(false);
+		}
 	};
 
 	const handleDeleteTeam = async () => {
@@ -182,6 +241,32 @@ const TeamDetail = () => {
 								{team.name}
 							</h1>
 							<p className="text-slate-400 text-lg">{team.tag}</p>
+
+							{/* Progress Bar */}
+							{refreshing && refreshStatus && refreshStatus.status === 'running' && (
+								<div className="mt-3">
+									<div className="flex items-center gap-2 mb-1">
+										<span className="text-xs text-cyan-400">
+											{refreshStatus.phase === 'collecting_matches' && 'Match-IDs sammeln'}
+											{refreshStatus.phase === 'filtering_matches' && 'Matches filtern'}
+											{refreshStatus.phase === 'fetching_matches' && 'Matches laden'}
+											{refreshStatus.phase === 'linking_data' && 'Daten verknüpfen'}
+											{refreshStatus.phase === 'calculating_stats' && 'Stats berechnen'}
+											{refreshStatus.phase === 'updating_ranks' && 'Ränge aktualisieren'}
+											{refreshStatus.phase === 'player_details' && 'Spieler-Details laden'}
+										</span>
+										<span className="text-xs text-slate-500">
+											{refreshStatus.progress_percent}%
+										</span>
+									</div>
+									<div className="w-full bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
+										<div
+											className="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full transition-all duration-500 ease-out"
+											style={{ width: `${refreshStatus.progress_percent}%` }}
+										/>
+									</div>
+								</div>
+							)}
 						</div>
 						<div className="flex gap-3">
 							<button

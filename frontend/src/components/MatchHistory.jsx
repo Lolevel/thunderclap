@@ -250,8 +250,12 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                     return (
                       <div
                         key={`${match.match_id}-preview-slot-${slotIdx}`}
-                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-border/50 bg-surface-hover flex items-center justify-center flex-shrink-0"
-                        title={player ? `${player.summoner_name} - ${player.champion_name}` : 'Empty slot'}
+                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${
+                          player?.laneswap_detected
+                            ? 'border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
+                            : 'border-border/50'
+                        } bg-surface-hover flex items-center justify-center flex-shrink-0`}
+                        title={player ? `${player.summoner_name} - ${player.champion_name}${player.laneswap_detected ? ' ⚠ Laneswap Detected' : ''}` : 'Empty slot'}
                       >
                         {player && getChampionUrl(player) ? (
                           <img
@@ -314,7 +318,7 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                                         <img
                                           src={ban.champion_icon}
                                           alt={ban.champion_name}
-                                          className="w-full h-full object-cover"
+                                          className="w-full h-full object-cover scale-120"
                                           onError={(e) => { e.target.style.display = 'none'; }}
                                         />
                                       )}
@@ -352,7 +356,7 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                                         <img
                                           src={ban.champion_icon}
                                           alt={ban.champion_name}
-                                          className="w-full h-full object-cover"
+                                          className="w-full h-full object-cover scale-120"
                                           onError={(e) => { e.target.style.display = 'none'; }}
                                         />
                                       )}
@@ -417,8 +421,21 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           </p>
                         </div>
 
-                        {/* Items */}
-                        <div className="flex gap-1">
+                        {/* Laneswap Warning - Prominent in center with fixed width */}
+                        <div className="w-28 flex-shrink-0">
+                          {p.laneswap_detected && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/15 rounded-lg border border-purple-500/50">
+                              <span className="text-purple-400 text-lg">⚠</span>
+                              <div className="text-xs text-center">
+                                <div className="font-semibold text-purple-300">Laneswap</div>
+                                <div className="text-purple-400/70">Detected</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Items - Fixed width container */}
+                        <div className="flex gap-1 w-52 flex-shrink-0">
                           {filterEmptyItems(p.items || []).map((itemId, itemIdx) => (
                             <div key={itemIdx} className="w-7 h-7 rounded overflow-hidden bg-surface-lighter">
                               <img
@@ -431,8 +448,8 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           ))}
                         </div>
 
-                        {/* KDA */}
-                        <div className="text-center">
+                        {/* KDA - Fixed width */}
+                        <div className="text-center w-20 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {p.kills}/{p.deaths}/{p.assists}
                           </p>
@@ -444,16 +461,16 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           </p>
                         </div>
 
-                        {/* CS */}
-                        <div className="text-center">
+                        {/* CS - Fixed width */}
+                        <div className="text-center w-16 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {p.cs}
                           </p>
                           <p className="text-xs text-text-muted">CS</p>
                         </div>
 
-                        {/* Gold */}
-                        <div className="text-center">
+                        {/* Gold - Fixed width */}
+                        <div className="text-center w-16 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {(p.gold / 1000).toFixed(1)}k
                           </p>
@@ -529,8 +546,21 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           </p>
                         </div>
 
-                        {/* Items */}
-                        <div className="flex gap-1">
+                        {/* Laneswap Warning - Prominent in center with fixed width */}
+                        <div className="w-28 flex-shrink-0">
+                          {p.laneswap_detected && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/15 rounded-lg border border-purple-500/50">
+                              <span className="text-purple-400 text-lg">⚠</span>
+                              <div className="text-xs text-center">
+                                <div className="font-semibold text-purple-300">Laneswap</div>
+                                <div className="text-purple-400/70">Detected</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Items - Fixed width container */}
+                        <div className="flex gap-1 w-52 flex-shrink-0">
                           {filterEmptyItems(p.items || []).map((itemId, itemIdx) => (
                             <div key={itemIdx} className="w-7 h-7 rounded overflow-hidden bg-surface-lighter">
                               <img
@@ -543,8 +573,8 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           ))}
                         </div>
 
-                        {/* KDA */}
-                        <div className="text-center">
+                        {/* KDA - Fixed width */}
+                        <div className="text-center w-20 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {p.kills}/{p.deaths}/{p.assists}
                           </p>
@@ -556,16 +586,16 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                           </p>
                         </div>
 
-                        {/* CS */}
-                        <div className="text-center">
+                        {/* CS - Fixed width */}
+                        <div className="text-center w-16 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {p.cs}
                           </p>
                           <p className="text-xs text-text-muted">CS</p>
                         </div>
 
-                        {/* Gold */}
-                        <div className="text-center">
+                        {/* Gold - Fixed width */}
+                        <div className="text-center w-16 flex-shrink-0">
                           <p className="text-sm font-semibold text-text-primary">
                             {(p.gold / 1000).toFixed(1)}k
                           </p>

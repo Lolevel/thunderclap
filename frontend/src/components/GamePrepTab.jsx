@@ -300,13 +300,17 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
                               {/* Blue Bans - preserve position */}
                               <div className="flex items-center gap-0.5">
                                 {blueBans.map((ban, idx) => (
-                                  <div key={idx} className="w-6 h-6 rounded border border-blue-500/30 overflow-hidden bg-slate-800">
+                                  <div key={idx} className="w-6 h-6 rounded border border-blue-500/30 overflow-hidden bg-slate-800 flex items-center justify-center">
                                     {ban ? (
-                                      <img
-                                        src={getChampionIcon(ban.champion_key)}
-                                        alt=""
-                                        className="w-full h-full object-cover opacity-50"
-                                      />
+                                      ban.isRolePlaceholder ? (
+                                        <RoleIcon role={ban.role || ban.champion_key?.toUpperCase()} size={14} />
+                                      ) : (
+                                        <img
+                                          src={getChampionIcon(ban.champion_key)}
+                                          alt=""
+                                          className="w-full h-full object-cover opacity-50"
+                                        />
+                                      )
                                     ) : (
                                       <div className="w-full h-full bg-slate-800/50"></div>
                                     )}
@@ -319,13 +323,17 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
                               {/* Red Bans - preserve position */}
                               <div className="flex items-center gap-0.5">
                                 {redBans.map((ban, idx) => (
-                                  <div key={idx} className="w-6 h-6 rounded border border-red-500/30 overflow-hidden bg-slate-800">
+                                  <div key={idx} className="w-6 h-6 rounded border border-red-500/30 overflow-hidden bg-slate-800 flex items-center justify-center">
                                     {ban ? (
-                                      <img
-                                        src={getChampionIcon(ban.champion_key)}
-                                        alt=""
-                                        className="w-full h-full object-cover opacity-50"
-                                      />
+                                      ban.isRolePlaceholder ? (
+                                        <RoleIcon role={ban.role || ban.champion_key?.toUpperCase()} size={14} />
+                                      ) : (
+                                        <img
+                                          src={getChampionIcon(ban.champion_key)}
+                                          alt=""
+                                          className="w-full h-full object-cover opacity-50"
+                                        />
+                                      )
                                     ) : (
                                       <div className="w-full h-full bg-slate-800/50"></div>
                                     )}
@@ -422,6 +430,7 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
                 <DraftBoard
                   scenario={currentScenario}
                   lockedRoster={lockedRoster}
+                  currentRoster={currentRoster}
                   onUpdate={(updates) => {
                     // Optimistic update - update local state immediately
                     setCurrentScenario(prev => ({ ...prev, ...updates }));

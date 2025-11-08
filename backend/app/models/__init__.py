@@ -11,6 +11,7 @@ from .scouting import ScoutingReport
 from .champion import Champion
 from .access_token import AccessToken
 from .game_prep import GamePrepRoster, DraftScenario, GamePrepComment
+from .team_refresh_status import TeamRefreshStatus
 
 __all__ = [
     "Team",
@@ -31,4 +32,5 @@ __all__ = [
     "GamePrepRoster",
     "DraftScenario",
     "GamePrepComment",
+    "TeamRefreshStatus",
 ]

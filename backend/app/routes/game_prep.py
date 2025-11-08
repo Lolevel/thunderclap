@@ -9,18 +9,29 @@ import random
 
 bp = Blueprint('game_prep', __name__, url_prefix='/api/game-prep')
 
-# Jungle monster names for random roster/scenario names
-JUNGLE_MONSTERS = [
-    'Krugs', 'Raptors', 'Wolves', 'Gromp', 'Scuttle',
-    'Red Buff', 'Blue Buff', 'Baron', 'Drake', 'Herald',
-    'Elder', 'Grubs', 'Murk Wolves', 'Crimson Raptors'
+# Harry Potter character names for random roster/scenario names
+HARRY_POTTER_NAMES = [
+    'Harry Potter', 'Hermione Granger', 'Ron Weasley', 'Albus Dumbledore',
+    'Severus Snape', 'Minerva McGonagall', 'Rubeus Hagrid', 'Sirius Black',
+    'Remus Lupin', 'Draco Malfoy', 'Neville Longbottom', 'Luna Lovegood',
+    'Ginny Weasley', 'Fred Weasley', 'George Weasley', 'Cedric Diggory',
+    'Cho Chang', 'Dean Thomas', 'Seamus Finnigan', 'Lavender Brown',
+    'Tom Riddle', 'Bellatrix Lestrange', 'Lucius Malfoy', 'Peter Pettigrew',
+    'Mad-Eye Moody', 'Nymphadora Tonks', 'Kingsley Shacklebolt', 'Arthur Weasley',
+    'Molly Weasley', 'Bill Weasley', 'Charlie Weasley', 'Fleur Delacour',
+    'Horace Slughorn', 'Pomona Sprout', 'Filius Flitwick', 'Sybill Trelawney',
+    'Gilderoy Lockhart', 'Dolores Umbridge', 'Viktor Krum', 'Igor Karkaroff',
+    'Cornelius Fudge', 'Rufus Scrimgeour', 'Amelia Bones', 'Amos Diggory',
+    'Godric Gryffindor', 'Salazar Slytherin', 'Rowena Ravenclaw', 'Helga Hufflepuff',
+    'Nicolas Flamel', 'Gellert Grindelwald', 'Lily Potter', 'James Potter',
+    'Regulus Black', 'Barty Crouch Jr', 'Fenrir Greyback', 'Antonin Dolohov'
 ]
 
 
 def get_random_monster_name(existing_names):
-    """Get a random unused monster name"""
-    available = [name for name in JUNGLE_MONSTERS if name not in existing_names]
-    return random.choice(available) if available else f"Monster {random.randint(1, 999)}"
+    """Get a random unused Harry Potter character name"""
+    available = [name for name in HARRY_POTTER_NAMES if name not in existing_names]
+    return random.choice(available) if available else f"Wizard {random.randint(1, 999)}"
 
 
 # ============================================================

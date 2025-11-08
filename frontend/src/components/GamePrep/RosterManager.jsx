@@ -67,9 +67,6 @@ export default function RosterManager({
         role: role
       }));
 
-    console.log('[RosterManager] Creating predicted roster:', rosterArray);
-    console.log('[RosterManager] Profile icon IDs:', rosterArray.map(p => ({ name: p.summoner_name, icon_id: p.profile_icon_id })));
-
     onCreateRoster({ name: 'Predicted Lineup', roster: rosterArray });
   }, [predictions, onCreateRoster]);
 
@@ -110,10 +107,10 @@ export default function RosterManager({
             </div>
             <button
               onClick={() => onUnlockRoster(lockedRoster.id)}
-              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2 border border-slate-600 hover:border-slate-500"
+              className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-lg transition-all duration-300 flex items-center gap-2 shadow-lg shadow-yellow-500/30 hover:shadow-yellow-500/50 hover:scale-105 active:scale-95 font-semibold"
             >
-              <Unlock className="w-4 h-4" />
-              Unlock
+              <Unlock className="w-5 h-5" />
+              Unlock Roster
             </button>
           </div>
 
@@ -483,12 +480,6 @@ const RosterCard = memo(function RosterCard({ roster, isSelected, onEdit, onDele
           // Handle both nested and flat player data structures
           const profileIconId = player.profile_icon_id || player.player?.profile_icon_id;
           const summonerName = player.summoner_name || player.player?.summoner_name || 'Unknown';
-
-          // Debug log for first player only
-          if (i === 0) {
-            console.log('[RosterCard] Player data:', player);
-            console.log('[RosterCard] Profile icon ID:', profileIconId);
-          }
 
           return (
             <div key={i} className="flex flex-col items-center gap-1.5">

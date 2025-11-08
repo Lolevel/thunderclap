@@ -300,10 +300,11 @@ class DraftAnalyzer:
             }
         }
 
-        # Add ban counts AGAINST team to team_champion_pool
+        # Add ban counts AGAINST team to team_champion_pool (ONLY first rotation/phase 1)
         for champ in team_champion_pool:
             champ_id = champ['champion_id']
-            total_bans_against = bans_against_phase1.get(champ_id, 0) + bans_against_phase2.get(champ_id, 0)
+            # Only count first rotation bans (phase 1 = ban 1-3)
+            total_bans_against = bans_against_phase1.get(champ_id, 0)
             champ['bans_against'] = total_bans_against
 
         result = {

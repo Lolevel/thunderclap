@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Users, User, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import ImportTeamModal from '../ImportTeamModal';
 import { useTeams } from '../../hooks/api/useTeam';
 import { usePlayers } from '../../hooks/api/usePlayer';
+import TeamLogo from '../TeamLogo';
+import { getSummonerIconUrl, handleSummonerIconError } from '../../utils/summonerHelper';
 
 const Navbar = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -81,7 +83,7 @@ const Navbar = () => {
 			<nav className="bg-slate-900/50 backdrop-blur-xl border-b border-slate-700/50 h-16 flex items-center px-6 sticky top-0 z-50">
 				<div className="flex items-center justify-between w-full max-w-screen-2xl mx-auto">
 					{/* Logo / Brand */}
-					<div className="flex items-center gap-3">
+					<Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity duration-200 cursor-pointer">
 						<img
 							src="/thunderclap-logo.png"
 							alt="Thunderclap Logo"
@@ -90,18 +92,18 @@ const Navbar = () => {
 						<h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent">
 							Thunderclap
 						</h1>
-					</div>
+					</Link>
 
 					{/* Search Bar */}
 					<div
 						className="flex-1 max-w-md mx-8 relative"
 						ref={searchRef}>
 						<div className="relative">
-							<Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+							<Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
 							<input
 								type="text"
-								placeholder="Team oder Spieler suchen..."
-								className="w-full pl-12 pr-4 py-2 bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-300"
+								placeholder="Search teams or players..."
+								className="w-full pl-12 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-300"
 								value={searchTerm}
 								onChange={(e) => setSearchTerm(e.target.value)}
 								onFocus={() =>
@@ -132,12 +134,13 @@ const Navbar = () => {
 														)
 													}
 													className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-700/50 rounded-lg transition-colors text-left cursor-pointer">
-													<div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
-														<span className="text-white font-bold text-sm">
-															{team.name
-																.charAt(0)
-																.toUpperCase()}
-														</span>
+													<div className="flex-shrink-0">
+														<TeamLogo
+															logoUrl={team.logo_url}
+															teamName={team.name}
+															size="sm"
+															className="!w-8 !h-8 !text-sm"
+														/>
 													</div>
 													<div>
 														<p className="font-medium text-white">
@@ -158,7 +161,7 @@ const Navbar = () => {
 										<div className="p-2 border-t border-slate-700/50">
 											<div className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-500 uppercase">
 												<User className="w-4 h-4" />
-												Spieler
+												Players
 											</div>
 											{searchResults.players.map(
 												(player) => (
@@ -171,8 +174,13 @@ const Navbar = () => {
 															)
 														}
 														className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-700/50 rounded-lg transition-colors text-left cursor-pointer">
-														<div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-lg flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-500/20">
-															<User className="w-4 h-4 text-white" />
+														<div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border border-cyan-500/30">
+															<img
+																src={getSummonerIconUrl(player.profile_icon_id)}
+																alt={player.summoner_name}
+																className="w-full h-full object-cover"
+																onError={handleSummonerIconError}
+															/>
 														</div>
 														<div>
 															<p className="font-medium text-white">
@@ -180,10 +188,10 @@ const Navbar = () => {
 																	player.summoner_name
 																}
 															</p>
-															{player.current_rank && (
+															{player.soloq && (
 																<p className="text-sm text-slate-400">
 																	{
-																		player.current_rank
+																		player.soloq.display
 																	}
 																</p>
 															)}
@@ -204,7 +212,7 @@ const Navbar = () => {
 							searchTerm.length >= 2 && (
 								<div className="absolute top-full mt-2 w-full bg-slate-800/95 backdrop-blur border border-slate-700/50 rounded-lg shadow-xl shadow-black/30 p-4 z-50">
 									<p className="text-slate-400 text-center">
-										Keine Ergebnisse gefunden
+										No results found
 									</p>
 								</div>
 							)}
@@ -215,7 +223,7 @@ const Navbar = () => {
 						<button
 							className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 font-medium cursor-pointer"
 							onClick={() => setIsImportModalOpen(true)}>
-							Importieren
+							Import
 						</button>
 
 						<button

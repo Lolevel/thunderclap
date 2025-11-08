@@ -48,7 +48,7 @@ const Dashboard = () => {
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center flex-1">
-				<div className="animate-pulse text-slate-400">Lädt...</div>
+				<div className="animate-pulse text-slate-400">Loading...</div>
 			</div>
 		);
 	}
@@ -69,7 +69,7 @@ const Dashboard = () => {
 						Dashboard
 					</h1>
 					<p className="text-slate-400">
-						Überblick über alle Teams und Spieler
+						Overview of all teams and players
 					</p>
 				</div>
 
@@ -82,7 +82,7 @@ const Dashboard = () => {
 							color: 'from-blue-500 to-blue-600',
 						},
 						{
-							label: 'Spieler',
+							label: 'Players',
 							value: stats.totalPlayers,
 							icon: TrendingUp,
 							color: 'from-cyan-500 to-cyan-600',
@@ -125,12 +125,12 @@ const Dashboard = () => {
 				<div>
 					<div className="flex items-center justify-between mb-4">
 						<h2 className="text-xl font-bold text-white">
-							Deine Teams
+							Your Teams
 						</h2>
 						<a
 							href="/teams"
 							className="text-cyan-400 hover:text-cyan-300 text-sm font-medium flex items-center gap-1 transition-colors">
-							Alle anzeigen <ChevronRight className="w-4 h-4" />
+							View all <ChevronRight className="w-4 h-4" />
 						</a>
 					</div>
 
@@ -138,12 +138,12 @@ const Dashboard = () => {
 						<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 text-center py-12">
 							<Users className="w-12 h-12 text-slate-500 mx-auto mb-4" />
 							<p className="text-slate-300 mb-4">
-								Noch keine Teams importiert
+								No teams imported yet
 							</p>
 							<button
 								onClick={() => setIsImportModalOpen(true)}
 								className="px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 font-medium shadow-lg shadow-blue-500/20 cursor-pointer">
-								Erstes Team importieren
+								Import your first team
 							</button>
 						</div>
 					) : (

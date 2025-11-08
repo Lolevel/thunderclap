@@ -157,21 +157,36 @@ def import_team():
                     f"Updated existing player: {display_name} (PUUID: {puuid})"
                 )
 
-            # Get ranked stats (only if we have summoner_id, which we don't due to API bug)
-            if summoner_id:
-                league_entries = riot_client.get_league_entries(summoner_id)
+            # Get ranked stats using PUUID (no summoner_id needed)
+            try:
+                league_entries = riot_client.get_league_entries_by_puuid(puuid)
                 if league_entries:
                     for entry in league_entries:
-                        if entry.get("queueType") == "RANKED_SOLO_5x5":
-                            player.current_rank = (
-                                f"{entry.get('tier')} {entry.get('rank')}"
-                            )
-                            player.current_lp = entry.get("leaguePoints", 0)
-                            break
-            else:
-                current_app.logger.warning(
-                    f"Skipping ranked stats for {display_name} - no summoner_id available"
-                )
+                        queue_type = entry.get("queueType")
+                        tier = entry.get("tier")
+                        division = entry.get("rank")
+                        lp = entry.get("leaguePoints", 0)
+                        wins = entry.get("wins", 0)
+                        losses = entry.get("losses", 0)
+
+                        if queue_type == "RANKED_SOLO_5x5":
+                            player.soloq_tier = tier
+                            player.soloq_division = division
+                            player.soloq_lp = lp
+                            player.soloq_wins = wins
+                            player.soloq_losses = losses
+                            player.rank_last_updated = datetime.utcnow()
+                        elif queue_type == "RANKED_FLEX_SR":
+                            player.flexq_tier = tier
+                            player.flexq_division = division
+                            player.flexq_lp = lp
+                            player.flexq_wins = wins
+                            player.flexq_losses = losses
+                    current_app.logger.info(f"Updated ranks for {display_name}")
+                else:
+                    current_app.logger.info(f"No ranked data found for {display_name}")
+            except Exception as e:
+                current_app.logger.warning(f"Failed to fetch ranked stats for {display_name}: {e}")
 
             players.append(player)
 
@@ -277,13 +292,16 @@ def delete_team(team_id):
         active_roster = [r for r in team.rosters if r.leave_date is None]
 
         # Remove team_id references from match_participants to avoid foreign key constraint violation
-        from app.models import MatchParticipant, MatchTeamStats, Match
+        from app.models import MatchParticipant, MatchTeamStats, Match, TeamRefreshStatus
         MatchParticipant.query.filter_by(team_id=team.id).update({MatchParticipant.team_id: None})
         MatchTeamStats.query.filter_by(team_id=team.id).update({MatchTeamStats.team_id: None})
 
         # Remove team references from matches (winning/losing team)
         Match.query.filter_by(winning_team_id=team.id).update({Match.winning_team_id: None})
         Match.query.filter_by(losing_team_id=team.id).update({Match.losing_team_id: None})
+
+        # Delete team_refresh_status entries (can't set to NULL because team_id is NOT NULL)
+        TeamRefreshStatus.query.filter_by(team_id=team.id).delete()
 
         if delete_players_flag:
             # Delete all players associated with this team

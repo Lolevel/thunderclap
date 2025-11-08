@@ -5,12 +5,13 @@ NEW endpoints for enhanced team analysis
 
 from flask import Blueprint, request, jsonify, current_app
 from app import db
-from app.models import Team, TeamStats, Player, PlayerChampion, Match, MatchParticipant
+from app.models import Team, TeamStats, Player, PlayerChampion, Match, MatchParticipant, MatchTeamStats
 from app.services.draft_analyzer import DraftAnalyzer
 from app.services.stats_calculator import StatsCalculator
 from app.middleware.auth import require_auth
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, or_
 from collections import defaultdict
+from datetime import datetime, timedelta
 import urllib.parse
 
 bp = Blueprint("analytics", __name__, url_prefix="/api")
@@ -289,6 +290,57 @@ def get_team_player_champion_pools(team_id):
         # Get active roster
         active_roster = [r for r in team.rosters if r.leave_date is None]
 
+        # Calculate bans against team (first rotation only)
+        # Use the same logic as in draft_analyzer.analyze_team_draft_patterns
+        days = 90
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        # Optimized: Load matches with MatchTeamStats in one query
+        matches_with_stats = db.session.query(Match, MatchTeamStats).join(
+            MatchTeamStats, Match.id == MatchTeamStats.match_id
+        ).filter(
+            Match.is_tournament_game == True,
+            Match.created_at >= cutoff_date,
+            or_(Match.winning_team_id == team.id, Match.losing_team_id == team.id)
+        ).all()
+
+        # Count bans against team (first rotation only - pick_turn <= 6)
+        bans_against_first_rotation = defaultdict(int)
+
+        # Group stats by match_id
+        matches_dict = {}
+        for match, team_stat in matches_with_stats:
+            if match.id not in matches_dict:
+                matches_dict[match.id] = {
+                    'match': match,
+                    'stats': []
+                }
+            matches_dict[match.id]['stats'].append(team_stat)
+
+        for match_id, match_data in matches_dict.items():
+            match = match_data['match']
+            all_team_stats = match_data['stats']
+
+            team_won = match.winning_team_id == team.id
+
+            # Find opponent stats based on win/loss
+            opponent_stats = None
+            for stats in all_team_stats:
+                if (team_won and not stats.win) or (not team_won and stats.win):
+                    opponent_stats = stats
+                    break
+
+            # Analyze opponent's bans (bans against us)
+            if opponent_stats:
+                opponent_bans = opponent_stats.bans or []
+                for ban in opponent_bans:
+                    champion_id = ban.get('championId')
+                    pick_turn = ban.get('pickTurn')
+
+                    # Only count first rotation bans (pick_turn <= 6)
+                    if champion_id and champion_id != -1 and pick_turn and pick_turn <= 6:
+                        bans_against_first_rotation[champion_id] += 1
+
         player_pools = []
 
         from app.utils.champion_helper import batch_enrich_champions
@@ -303,7 +355,7 @@ def get_team_player_champion_pools(team_id):
                 game_type='tournament'
             ).order_by(
                 PlayerChampion.games_played.desc()
-            ).limit(10).all()
+            ).all()
 
             # If no tournament champions found, try all game types
             if not champions:
@@ -311,7 +363,7 @@ def get_team_player_champion_pools(team_id):
                     player_id=player.id
                 ).order_by(
                     PlayerChampion.games_played.desc()
-                ).limit(10).all()
+                ).all()
 
             # If still no champions, add player with empty champion list
             champion_list = []
@@ -336,7 +388,8 @@ def get_team_player_champion_pools(team_id):
                         "losses": champ.losses,
                         "winrate": round((champ.wins / champ.games_played * 100) if champ.games_played > 0 else 0, 1),
                         "kda": round(float(champ.kda_average), 2) if champ.kda_average else 0,
-                        "cs_per_min": round(float(champ.cs_per_min), 1) if champ.cs_per_min else 0
+                        "cs_per_min": round(float(champ.cs_per_min), 1) if champ.cs_per_min else 0,
+                        "bans_against": bans_against_first_rotation.get(champ.champion_id, 0)  # NEW: First rotation bans
                     })
 
             # Always add the player, even if they have no champion data
@@ -593,7 +646,7 @@ def get_team_opgg_url(team_id):
         return jsonify({"error": "Failed to generate team OP.GG URL", "details": str(e)}), 500
 
 
-@bp.route("/teams/<team_id>/refresh", methods=["POST"])
+@bp.route("/teams/<team_id>/refresh-legacy", methods=["POST"])
 def refresh_team_stats(team_id):
     """
     Refresh all team statistics
@@ -1101,14 +1154,33 @@ def get_team_matches(team_id):
         total_matches = matches_query.count()
         matches = matches_query.offset(offset).limit(limit).all()
 
+        # Optimized: Load all participants for all matches in one query
+        match_ids = [m.id for m in matches]
+        all_participants = MatchParticipant.query.filter(
+            MatchParticipant.match_id.in_(match_ids)
+        ).order_by(
+            MatchParticipant.match_id,
+            MatchParticipant.riot_team_id,
+            MatchParticipant.participant_id
+        ).all()
+
+        # Group participants by match_id
+        participants_by_match = {}
+        for p in all_participants:
+            if p.match_id not in participants_by_match:
+                participants_by_match[p.match_id] = []
+            participants_by_match[p.match_id].append(p)
+
+        # Build a map of player_id -> assigned_role from team roster
+        player_assigned_roles = {}
+        for roster_entry in active_roster:
+            player_assigned_roles[roster_entry.player_id] = roster_entry.role
+
         result_matches = []
 
         for match in matches:
-            # Get all participants for this match, ordered by riot_team_id and participant_id
-            participants = MatchParticipant.query.filter_by(match_id=match.id).order_by(
-                MatchParticipant.riot_team_id,
-                MatchParticipant.participant_id
-            ).all()
+            # Get participants from pre-loaded data
+            participants = participants_by_match.get(match.id, [])
 
             # Count team players in this match
             team_players_count = sum(1 for p in participants if p.player_id in team_player_ids)
@@ -1151,6 +1223,9 @@ def get_team_matches(team_id):
                 'utility': 'Support'
             }
 
+            # Role order for sorting
+            ROLE_ORDER = {'TOP': 0, 'JUNGLE': 1, 'MIDDLE': 2, 'BOTTOM': 3, 'UTILITY': 4}
+
             for p in participants:
                 is_team_member = p.player_id in team_player_ids
                 is_our_team = p.riot_team_id == our_riot_team_id
@@ -1161,9 +1236,21 @@ def get_team_matches(team_id):
                     'icon_url': None
                 })
 
-                # Display role (prefer team_position over individual_position)
-                display_role = p.team_position or p.individual_position or p.role or 'UNKNOWN'
-                display_role = ROLE_DISPLAY.get(display_role, display_role)
+                # Get Riot's assigned role for this game (prefer team_position)
+                riot_role = p.team_position or p.individual_position or p.role or 'UNKNOWN'
+                display_role = ROLE_DISPLAY.get(riot_role, riot_role)
+
+                # Laneswap detection: Check if assigned role differs from Riot's role
+                laneswap_detected = False
+                if is_team_member and p.player_id in player_assigned_roles:
+                    assigned_role = player_assigned_roles[p.player_id]
+                    # Normalize riot_role for comparison
+                    normalized_riot_role = riot_role.upper() if riot_role else 'UNKNOWN'
+
+                    # Detect TOP <-> BOTTOM swap
+                    if (assigned_role == 'TOP' and normalized_riot_role == 'BOTTOM') or \
+                       (assigned_role == 'BOTTOM' and normalized_riot_role == 'TOP'):
+                        laneswap_detected = True
 
                 participant_info = {
                     "player_id": str(p.player_id) if p.player_id else None,
@@ -1174,6 +1261,8 @@ def get_team_matches(team_id):
                     "champion_name": champ_info.get('name', p.champion_name),
                     "champion_icon": champ_info.get('icon_url'),
                     "role": display_role,
+                    "riot_role_raw": riot_role.upper() if riot_role else 'UNKNOWN',  # For sorting
+                    "laneswap_detected": laneswap_detected,
                     "riot_team_id": p.riot_team_id,  # 100=Blue, 200=Red
                     "kills": p.kills or 0,
                     "deaths": p.deaths or 0,
@@ -1195,6 +1284,14 @@ def get_team_matches(team_id):
                     our_team_participants.append(participant_info)
                 else:
                     enemy_team_participants.append(participant_info)
+
+            # Sort participants by Riot's role order
+            def sort_by_role(participant):
+                role = participant.get('riot_role_raw', 'UNKNOWN')
+                return ROLE_ORDER.get(role, 999)
+
+            our_team_participants.sort(key=sort_by_role)
+            enemy_team_participants.sort(key=sort_by_role)
 
             # Get ban data from MatchTeamStats
             from app.models import MatchTeamStats
@@ -1326,19 +1423,31 @@ def get_player_matches(player_id):
         # Enrich champion data
         from app.utils.champion_helper import batch_enrich_champions
 
+        # Optimized: Load all participants for all matches in one query
+        match_ids = [p.match_id for p in participants if p.match]
+        all_match_participants = MatchParticipant.query.filter(
+            MatchParticipant.match_id.in_(match_ids)
+        ).order_by(
+            MatchParticipant.match_id,
+            MatchParticipant.riot_team_id,
+            MatchParticipant.participant_id
+        ).all()
+
+        # Group participants by match_id
+        participants_by_match = {}
+        for pt in all_match_participants:
+            if pt.match_id not in participants_by_match:
+                participants_by_match[pt.match_id] = []
+            participants_by_match[pt.match_id].append(pt)
+
         matches = []
         for p in participants:
             match = p.match
             if not match:
                 continue
 
-            # Get all participants for this match
-            all_participants = MatchParticipant.query.filter_by(
-                match_id=match.id
-            ).order_by(
-                MatchParticipant.riot_team_id,
-                MatchParticipant.participant_id
-            ).all()
+            # Get participants from pre-loaded data
+            all_participants = participants_by_match.get(match.id, [])
 
             # Enrich all champions in this match
             champion_ids = [pt.champion_id for pt in all_participants]
@@ -1433,3 +1542,58 @@ def get_player_matches(player_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching player matches: {str(e)}")
         return jsonify({"error": "Failed to fetch player matches", "details": str(e)}), 500
+
+
+@bp.route("/teams/<team_id>/refresh", methods=["POST"])
+def trigger_team_refresh(team_id):
+    """
+    Trigger a non-blocking team data refresh.
+    Returns immediately after starting the refresh in background.
+    
+    Returns:
+        {
+            "message": "Refresh started",
+            "status": "running"
+        }
+    """
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+    
+    try:
+        from app.services.refresh_scheduler import RefreshScheduler
+        result = RefreshScheduler.refresh_single_team(team_id, current_app._get_current_object())
+        return jsonify(result), 200
+    except Exception as e:
+        current_app.logger.error(f"Error triggering team refresh: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/teams/<team_id>/refresh-status", methods=["GET"])
+def get_team_refresh_status(team_id):
+    """
+    Get current refresh status for a team.
+    Used by frontend to poll refresh progress.
+    
+    Returns:
+        {
+            "team_id": "uuid",
+            "status": "running|completed|failed|idle",
+            "phase": "collecting_matches|filtering_matches|...",
+            "progress_percent": 45,
+            "started_at": "2025-01-03T10:30:00",
+            "completed_at": null,
+            "error_message": null
+        }
+    """
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+    
+    try:
+        from app.models import TeamRefreshStatus
+        refresh_status = TeamRefreshStatus.get_status(team_id)
+        return jsonify(refresh_status.to_dict()), 200
+    except Exception as e:
+        current_app.logger.error(f"Error fetching refresh status: {str(e)}")
+        return jsonify({"error": str(e)}), 500

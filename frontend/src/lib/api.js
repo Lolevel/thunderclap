@@ -59,3 +59,12 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// Team Refresh APIs
+export const triggerTeamRefresh = (teamId) => {
+  return api.post(`/teams/${teamId}/refresh`, {});
+};
+
+export const getTeamRefreshStatus = (teamId) => {
+  return api.get(`/teams/${teamId}/refresh-status`);
+};

@@ -47,17 +47,17 @@ const Teams = () => {
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
             Teams
           </h1>
-          <p className="text-slate-400">Verwalte und analysiere deine Teams</p>
+          <p className="text-slate-400">Manage and analyze your teams</p>
         </div>
 
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none z-10" />
           <input
             type="text"
-            placeholder="Teams durchsuchen..."
+            placeholder="Search teams..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-slate-800/50 backdrop-blur border border-slate-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-300"
+            className="w-full pl-12 pr-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all duration-300"
           />
         </div>
 
@@ -66,64 +66,110 @@ const Teams = () => {
             <Users className="w-12 h-12 text-slate-500 mx-auto mb-4" />
             <p className="text-slate-300 mb-2">
               {searchTerm
-                ? "Keine Teams gefunden"
-                : "Noch keine Teams importiert"}
+                ? "No teams found"
+                : "No teams imported yet"}
             </p>
             <p className="text-slate-500 text-sm">
-              {!searchTerm && 'Nutze den "Team Importieren" Button zum Starten'}
+              {!searchTerm && 'Use the "Import" button to get started'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredTeams.map((team) => (
-              <a
+              <Link
                 key={team.id}
-                href={`/teams/${team.id}`}
-                className="group relative overflow-hidden rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 hover:border-cyan-500/50 transition-all duration-300 p-5 hover:bg-slate-800/60"
+                to={`/teams/${team.id}`}
+                className="group relative h-48 rounded-2xl bg-gradient-to-br from-slate-800/40 via-slate-800/30 to-slate-900/50 backdrop-blur-2xl border border-slate-700/30 hover:border-cyan-500/40 transition-all duration-500 hover:shadow-2xl hover:shadow-cyan-500/10 overflow-hidden"
               >
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/0 via-blue-500/0 to-purple-500/0 group-hover:from-cyan-500/10 group-hover:via-blue-500/10 group-hover:to-purple-500/10 transition-all duration-300 pointer-events-none" />
+                {/* Outer glow effect */}
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/0 via-blue-500/0 to-purple-500/0 group-hover:from-cyan-500/20 group-hover:via-blue-500/20 group-hover:to-purple-500/20 rounded-2xl blur-xl transition-all duration-500 opacity-0 group-hover:opacity-100 -z-10" />
 
-                <div className="relative">
-                  <div className="flex items-start justify-between mb-4">
+                {/* Large logo on right side - flush with edge, grows on hover */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-48 h-48 opacity-60 pointer-events-none z-5 group-hover:scale-125 transition-all duration-500">
+                  <div className="relative w-full h-full">
+                    {/* Main logo - sharper */}
                     <TeamLogo
                       logoUrl={team.logo_url}
                       teamName={team.name}
-                      size="sm"
-                      className="group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105"
+                      size="lg"
+                      className="w-full h-full"
                     />
-                    {team.division && (
-                      <span className="px-2 py-1 rounded text-xs font-medium bg-slate-700/50 text-slate-300 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 transition-colors duration-300">
-                        {team.division}
-                      </span>
-                    )}
+                  </div>
+                </div>
+
+                {/* Multiple blur layers for smooth transition */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-48 h-48 opacity-25 pointer-events-none z-4 group-hover:scale-125 transition-all duration-500">
+                  <div className="relative w-full h-full blur-lg">
+                    <TeamLogo
+                      logoUrl={team.logo_url}
+                      teamName={team.name}
+                      size="lg"
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-48 h-48 opacity-20 pointer-events-none z-3 group-hover:scale-125 transition-all duration-500">
+                  <div className="relative w-full h-full blur-2xl">
+                    <TeamLogo
+                      logoUrl={team.logo_url}
+                      teamName={team.name}
+                      size="lg"
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-48 h-48 opacity-15 pointer-events-none z-2 group-hover:scale-125 transition-all duration-500">
+                  <div className="relative w-full h-full blur-3xl">
+                    <TeamLogo
+                      logoUrl={team.logo_url}
+                      teamName={team.name}
+                      size="lg"
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Soft gradient overlay - allows logo colors to bleed through */}
+                <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-slate-900/60 pointer-events-none mix-blend-multiply" />
+
+                {/* Division badge - floating top right */}
+                {team.division && (
+                  <div className="absolute top-4 right-4 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900/70 backdrop-blur-lg text-slate-300 border border-slate-700/40 group-hover:bg-cyan-500/20 group-hover:text-cyan-300 group-hover:border-cyan-500/50 group-hover:shadow-lg group-hover:shadow-cyan-500/20 transition-all duration-300 z-20">
+                    {team.division}
+                  </div>
+                )}
+
+                {/* Content - Foreground */}
+                <div className="relative h-full flex flex-col justify-between p-6 z-10">
+                  {/* Team Tag - Large and prominent */}
+                  <div>
+                    <div className="text-5xl font-black text-white/90 mb-2 drop-shadow-2xl transition-colors duration-300">
+                      {team.tag || team.name.substring(0, 3).toUpperCase()}
+                    </div>
+                    <div className="text-sm font-bold text-white/80 drop-shadow-lg transition-colors duration-300">
+                      {team.name}
+                    </div>
                   </div>
 
-                  <h3 className="font-semibold text-white group-hover:text-cyan-400 transition-colors mb-1">
-                    {team.name}
-                  </h3>
-                  <p className="text-sm text-slate-400 mb-2">{team.tag}</p>
-
+                  {/* Average Rank - Bottom */}
                   {team.average_rank && (
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2 bg-slate-900/40 backdrop-blur-md rounded-lg px-3 py-2 w-fit">
                       {team.average_rank_icon && (
                         <img
                           src={team.average_rank_icon}
                           alt={team.average_rank}
-                          className="w-5 h-5"
+                          className="w-5 h-5 opacity-80 group-hover:opacity-100 transition-opacity duration-300"
                         />
                       )}
-                      <span className="text-xs text-slate-400 font-medium">
+                      <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors duration-300">
                         Ø {team.average_rank}
                       </span>
                     </div>
                   )}
-
-                  <div className="flex items-center justify-between text-slate-400 group-hover:text-cyan-400 transition-colors text-sm">
-                    <span>Zum Team →</span>
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
-                  </div>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         )}

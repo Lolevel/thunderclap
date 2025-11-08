@@ -312,6 +312,22 @@ class RiotAPIClient:
         url = f'{self.platform_url}/lol/league/v4/entries/by-summoner/{summoner_id}'
         return self._make_request(url)
 
+    def get_league_entries_by_puuid(self, puuid: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get ranked league entries for a summoner by PUUID
+
+        This is an undocumented but working endpoint that allows fetching
+        ranked data using PUUID instead of summoner_id.
+
+        Args:
+            puuid: Player UUID
+
+        Returns:
+            List of league entries or None
+        """
+        url = f'{self.platform_url}/lol/league/v4/entries/by-puuid/{puuid}'
+        return self._make_request(url)
+
     # ============================================================
     # HELPER METHODS
     # ============================================================

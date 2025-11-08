@@ -12,7 +12,7 @@ import useSWR from 'swr';
  * - 2nd/3rd Priority: Alternative champions (expandable)
  * - Blue side expands left, Red side expands right
  */
-export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster }) {
+export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster, currentRoster }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -102,56 +102,84 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
     setUpdateTrigger(prev => prev + 1);
   }, [scenario, onUpdate]);
 
-  // Add champion to slot (as priority)
+  // Add champion to slot (as priority or replace)
   const addChampionToSlot = useCallback((champion, type, side, index) => {
+    const championId = champion.isRolePlaceholder ? champion.id : champion.id;
+    const championKey = champion.key;
+
     if (type === 'ban') {
       const bansKey = `${side}_bans`;
       const newBans = [...(scenario[bansKey] || [])];
       const currentChampions = normalizeChampions(newBans[index]);
 
-      // Limit to max 5 priorities (1 main + 4 secondary)
-      if (currentChampions.length >= 5) {
-        return; // Don't add more than 5
-      }
-
-      // Check if champion already exists
-      const championId = champion.isRolePlaceholder ? champion.id : champion.id;
-      if (!currentChampions.some(c => c.champion_id === championId)) {
-        newBans[index] = [...currentChampions, {
+      // If priorities are hidden, replace the slot
+      if (!showAllPrios) {
+        newBans[index] = [{
           champion_id: championId,
-          champion_key: champion.key,
+          champion_key: championKey,
           order: index + 1,
-          priority: currentChampions.length + 1,
+          priority: 1,
           isRolePlaceholder: champion.isRolePlaceholder || false,
           role: champion.isRolePlaceholder ? champion.role : undefined
         }];
         onUpdate({ [bansKey]: newBans });
+      } else {
+        // Priorities are shown - add as priority
+        // Limit to max 5 priorities (1 main + 4 secondary)
+        if (currentChampions.length >= 5) {
+          return; // Don't add more than 5
+        }
+
+        // Check if champion already exists
+        if (!currentChampions.some(c => c.champion_id === championId)) {
+          newBans[index] = [...currentChampions, {
+            champion_id: championId,
+            champion_key: championKey,
+            order: index + 1,
+            priority: currentChampions.length + 1,
+            isRolePlaceholder: champion.isRolePlaceholder || false,
+            role: champion.isRolePlaceholder ? champion.role : undefined
+          }];
+          onUpdate({ [bansKey]: newBans });
+        }
       }
     } else {
       const picksKey = `${side}_picks`;
       const newPicks = [...(scenario[picksKey] || [])];
       const currentChampions = normalizeChampions(newPicks[index]);
 
-      // Limit to max 5 priorities (1 main + 4 secondary)
-      if (currentChampions.length >= 5) {
-        return; // Don't add more than 5
-      }
-
-      // Check if champion already exists
-      const championId = champion.isRolePlaceholder ? champion.id : champion.id;
-      if (!currentChampions.some(c => c.champion_id === championId)) {
-        newPicks[index] = [...currentChampions, {
+      // If priorities are hidden, replace the slot
+      if (!showAllPrios) {
+        newPicks[index] = [{
           champion_id: championId,
-          champion_key: champion.key,
+          champion_key: championKey,
           role: champion.isRolePlaceholder ? champion.role : getRoleForIndex(index),
-          priority: currentChampions.length + 1,
+          priority: 1,
           isRolePlaceholder: champion.isRolePlaceholder || false
         }];
         onUpdate({ [picksKey]: newPicks });
+      } else {
+        // Priorities are shown - add as priority
+        // Limit to max 5 priorities (1 main + 4 secondary)
+        if (currentChampions.length >= 5) {
+          return; // Don't add more than 5
+        }
+
+        // Check if champion already exists
+        if (!currentChampions.some(c => c.champion_id === championId)) {
+          newPicks[index] = [...currentChampions, {
+            champion_id: championId,
+            champion_key: championKey,
+            role: champion.isRolePlaceholder ? champion.role : getRoleForIndex(index),
+            priority: currentChampions.length + 1,
+            isRolePlaceholder: champion.isRolePlaceholder || false
+          }];
+          onUpdate({ [picksKey]: newPicks });
+        }
       }
     }
     setUpdateTrigger(prev => prev + 1);
-  }, [scenario, onUpdate]);
+  }, [scenario, onUpdate, showAllPrios]);
 
   // Handle champion click from pool
   const handleChampionPoolClick = useCallback((champion) => {
@@ -232,19 +260,66 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
     e.preventDefault();
 
     if (draggedChampion) {
-      // Remove from old slot if dragged from a slot
+      const championId = draggedChampion.champion_id || draggedChampion.id;
+      const championKey = draggedChampion.champion_key || draggedChampion.key;
+
+      // Build complete new scenario state
+      let newScenario = { ...scenario };
+
+      // Step 1: Remove from old slot if dragged from a slot
       if (draggedFromSlot) {
         const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
-        removeChampion(fromType, fromSide, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+        const fromKey = fromType === 'ban' ? `${fromSide}_bans` : `${fromSide}_picks`;
+        const fromArray = [...(newScenario[fromKey] || [])];
+        const fromChampions = normalizeChampions(fromArray[fromIndex]);
+
+        // Remove the dragged champion
+        const filtered = fromChampions.filter(c => c.champion_id !== championId);
+        fromArray[fromIndex] = filtered.length > 0 ? filtered.map((c, i) => ({ ...c, priority: i + 1 })) : null;
+        newScenario[fromKey] = fromArray;
       }
 
-      // Add to new slot
-      addChampionToSlot(draggedChampion, type, side, index);
+      // Step 2: Add to new slot
+      const toKey = type === 'ban' ? `${side}_bans` : `${side}_picks`;
+      const toArray = [...(newScenario[toKey] || [])];
+      const currentChampions = normalizeChampions(toArray[index]);
+
+      // If priorities are hidden, ALWAYS replace
+      if (!showAllPrios) {
+        // Replace the entire slot with the new champion
+        toArray[index] = [{
+          champion_id: championId,
+          champion_key: championKey,
+          role: draggedChampion.isRolePlaceholder ? draggedChampion.role : (draggedChampion.role || (type === 'pick' ? getRoleForIndex(index) : undefined)),
+          priority: 1,
+          isRolePlaceholder: draggedChampion.isRolePlaceholder || false,
+          ...(type === 'ban' && { order: index + 1 })
+        }];
+      } else {
+        // Priorities are shown - add as new priority (if not already in this slot and under limit)
+        const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+        if (!alreadyExists && currentChampions.length < 5) {
+          toArray[index] = [...currentChampions, {
+            champion_id: championId,
+            champion_key: championKey,
+            role: draggedChampion.isRolePlaceholder ? draggedChampion.role : (draggedChampion.role || (type === 'pick' ? getRoleForIndex(index) : undefined)),
+            priority: currentChampions.length + 1,
+            isRolePlaceholder: draggedChampion.isRolePlaceholder || false,
+            ...(type === 'ban' && { order: index + 1 })
+          }];
+        }
+      }
+
+      newScenario[toKey] = toArray;
+
+      // Update in one go
+      onUpdate(newScenario);
+      setUpdateTrigger(prev => prev + 1);
     }
 
     setDraggedChampion(null);
     setDraggedFromSlot(null);
-  }, [draggedChampion, draggedFromSlot, addChampionToSlot, removeChampion]);
+  }, [draggedChampion, draggedFromSlot, showAllPrios, scenario, onUpdate]);
 
   const getRoleForIndex = (index) => {
     const roles = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
@@ -256,22 +331,48 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
   const ourTeamName = 'Wir';
   const opponentTeamName = teamName;
 
+  // Determine which roster to display
+  const displayRoster = lockedRoster || currentRoster;
+  const isLocked = !!lockedRoster;
+
   return (
     <div className="space-y-6">
-      {/* Locked Roster Display */}
-      {lockedRoster && lockedRoster.roster && (
-        <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/50 rounded-lg p-4">
+      {/* Roster Display - Locked or Current */}
+      {displayRoster && displayRoster.roster && (
+        <div className={`rounded-lg p-4 transition-all ${
+          isLocked
+            ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-2 border-purple-500/50'
+            : 'bg-slate-800/30 border-2 border-dashed border-yellow-500/50'
+        }`}>
           <div className="flex items-center gap-3 mb-4">
             <div className="flex items-center gap-2">
-              <Lock className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-bold text-purple-300">Locked Roster</h3>
+              {isLocked ? (
+                <>
+                  <Lock className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-lg font-bold text-purple-300">Locked Roster</h3>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-5 h-5 text-yellow-400" style={{ transform: 'rotate(-25deg)' }} />
+                  <h3 className="text-lg font-bold text-yellow-300">Preview Roster (Not Locked)</h3>
+                </>
+              )}
             </div>
-            <span className="text-sm text-purple-400/80">— {lockedRoster.name}</span>
+            <span className={`text-sm ${isLocked ? 'text-purple-400/80' : 'text-yellow-400/80'}`}>
+              — {displayRoster.name}
+            </span>
+            {!isLocked && (
+              <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+                <span className="text-xs font-semibold text-yellow-300 uppercase tracking-wide">
+                  ⚠ Not Final
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-5 gap-3">
-            {lockedRoster.roster.map((player) => (
-              <PlayerCardWithChampionPool key={player.player_id} player={player} />
+            {displayRoster.roster.map((player) => (
+              <PlayerCardWithChampionPool key={player.player_id} player={player} isLocked={isLocked} />
             ))}
           </div>
         </div>
@@ -334,12 +435,63 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
                     onDrop={(e) => handleDrop(e, 'ban', 'blue', index)}
                     onDropAtPriority={(e, priority) => {
                       e.preventDefault();
-                      if (draggedChampion) {
+                      if (draggedChampion && showAllPrios) {
+                        const championId = draggedChampion.champion_id || draggedChampion.id;
+                        const championKey = draggedChampion.champion_key || draggedChampion.key;
+
+                        // Build complete new scenario state
+                        let newScenario = { ...scenario };
+
+                        // Step 1: Remove from old slot if dragged from a slot
                         if (draggedFromSlot) {
-                          const { type, side, index: fromIndex } = draggedFromSlot;
-                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                          const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
+                          const fromKey = fromType === 'ban' ? `${fromSide}_bans` : `${fromSide}_picks`;
+                          const fromArray = [...(newScenario[fromKey] || [])];
+                          const fromChampions = normalizeChampions(fromArray[fromIndex]);
+
+                          // Remove the dragged champion
+                          const filtered = fromChampions.filter(c => c.champion_id !== championId);
+                          fromArray[fromIndex] = filtered.length > 0 ? filtered.map((c, i) => ({ ...c, priority: i + 1 })) : null;
+                          newScenario[fromKey] = fromArray;
                         }
-                        addChampionAtPriority(draggedChampion, 'ban', 'blue', index, priority);
+
+                        // Step 2: Add at specific priority
+                        const toKey = 'blue_bans';
+                        const toArray = [...(newScenario[toKey] || [])];
+                        const currentChampions = normalizeChampions(toArray[index]);
+
+                        // Check if already exists in this slot
+                        const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+
+                        // Limit to max 5 priorities
+                        if (!alreadyExists && currentChampions.length >= 5) {
+                          setDraggedChampion(null);
+                          setDraggedFromSlot(null);
+                          return;
+                        }
+
+                        // Remove if already exists (for reordering)
+                        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+
+                        // Insert at target priority position
+                        const newChampion = {
+                          champion_id: championId,
+                          champion_key: championKey,
+                          order: index + 1,
+                          priority: priority,
+                          isRolePlaceholder: draggedChampion.isRolePlaceholder || false,
+                          role: draggedChampion.isRolePlaceholder ? draggedChampion.role : undefined
+                        };
+
+                        filtered.splice(priority - 1, 0, newChampion);
+
+                        // Re-assign priorities
+                        toArray[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+                        newScenario[toKey] = toArray;
+
+                        // Update in one go
+                        onUpdate(newScenario);
+                        setUpdateTrigger(prev => prev + 1);
                         setDraggedChampion(null);
                         setDraggedFromSlot(null);
                       }
@@ -431,12 +583,63 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
                     onDrop={(e) => handleDrop(e, 'ban', 'red', index)}
                     onDropAtPriority={(e, priority) => {
                       e.preventDefault();
-                      if (draggedChampion) {
+                      if (draggedChampion && showAllPrios) {
+                        const championId = draggedChampion.champion_id || draggedChampion.id;
+                        const championKey = draggedChampion.champion_key || draggedChampion.key;
+
+                        // Build complete new scenario state
+                        let newScenario = { ...scenario };
+
+                        // Step 1: Remove from old slot if dragged from a slot
                         if (draggedFromSlot) {
-                          const { type, side, index: fromIndex } = draggedFromSlot;
-                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                          const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
+                          const fromKey = fromType === 'ban' ? `${fromSide}_bans` : `${fromSide}_picks`;
+                          const fromArray = [...(newScenario[fromKey] || [])];
+                          const fromChampions = normalizeChampions(fromArray[fromIndex]);
+
+                          // Remove the dragged champion
+                          const filtered = fromChampions.filter(c => c.champion_id !== championId);
+                          fromArray[fromIndex] = filtered.length > 0 ? filtered.map((c, i) => ({ ...c, priority: i + 1 })) : null;
+                          newScenario[fromKey] = fromArray;
                         }
-                        addChampionAtPriority(draggedChampion, 'ban', 'red', index, priority);
+
+                        // Step 2: Add at specific priority
+                        const toKey = 'red_bans';
+                        const toArray = [...(newScenario[toKey] || [])];
+                        const currentChampions = normalizeChampions(toArray[index]);
+
+                        // Check if already exists in this slot
+                        const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+
+                        // Limit to max 5 priorities
+                        if (!alreadyExists && currentChampions.length >= 5) {
+                          setDraggedChampion(null);
+                          setDraggedFromSlot(null);
+                          return;
+                        }
+
+                        // Remove if already exists (for reordering)
+                        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+
+                        // Insert at target priority position
+                        const newChampion = {
+                          champion_id: championId,
+                          champion_key: championKey,
+                          order: index + 1,
+                          priority: priority,
+                          isRolePlaceholder: draggedChampion.isRolePlaceholder || false,
+                          role: draggedChampion.isRolePlaceholder ? draggedChampion.role : undefined
+                        };
+
+                        filtered.splice(priority - 1, 0, newChampion);
+
+                        // Re-assign priorities
+                        toArray[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+                        newScenario[toKey] = toArray;
+
+                        // Update in one go
+                        onUpdate(newScenario);
+                        setUpdateTrigger(prev => prev + 1);
                         setDraggedChampion(null);
                         setDraggedFromSlot(null);
                       }
@@ -474,12 +677,62 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
                     onDrop={(e) => handleDrop(e, 'pick', 'blue', index)}
                     onDropAtPriority={(e, priority) => {
                       e.preventDefault();
-                      if (draggedChampion) {
+                      if (draggedChampion && showAllPrios) {
+                        const championId = draggedChampion.champion_id || draggedChampion.id;
+                        const championKey = draggedChampion.champion_key || draggedChampion.key;
+
+                        // Build complete new scenario state
+                        let newScenario = { ...scenario };
+
+                        // Step 1: Remove from old slot if dragged from a slot
                         if (draggedFromSlot) {
-                          const { type, side, index: fromIndex } = draggedFromSlot;
-                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                          const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
+                          const fromKey = fromType === 'ban' ? `${fromSide}_bans` : `${fromSide}_picks`;
+                          const fromArray = [...(newScenario[fromKey] || [])];
+                          const fromChampions = normalizeChampions(fromArray[fromIndex]);
+
+                          // Remove the dragged champion
+                          const filtered = fromChampions.filter(c => c.champion_id !== championId);
+                          fromArray[fromIndex] = filtered.length > 0 ? filtered.map((c, i) => ({ ...c, priority: i + 1 })) : null;
+                          newScenario[fromKey] = fromArray;
                         }
-                        addChampionAtPriority(draggedChampion, 'pick', 'blue', index, priority);
+
+                        // Step 2: Add at specific priority
+                        const toKey = 'blue_picks';
+                        const toArray = [...(newScenario[toKey] || [])];
+                        const currentChampions = normalizeChampions(toArray[index]);
+
+                        // Check if already exists in this slot
+                        const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+
+                        // Limit to max 5 priorities
+                        if (!alreadyExists && currentChampions.length >= 5) {
+                          setDraggedChampion(null);
+                          setDraggedFromSlot(null);
+                          return;
+                        }
+
+                        // Remove if already exists (for reordering)
+                        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+
+                        // Insert at target priority position
+                        const newChampion = {
+                          champion_id: championId,
+                          champion_key: championKey,
+                          role: draggedChampion.isRolePlaceholder ? draggedChampion.role : (draggedChampion.role || getRoleForIndex(index)),
+                          priority: priority,
+                          isRolePlaceholder: draggedChampion.isRolePlaceholder || false
+                        };
+
+                        filtered.splice(priority - 1, 0, newChampion);
+
+                        // Re-assign priorities
+                        toArray[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+                        newScenario[toKey] = toArray;
+
+                        // Update in one go
+                        onUpdate(newScenario);
+                        setUpdateTrigger(prev => prev + 1);
                         setDraggedChampion(null);
                         setDraggedFromSlot(null);
                       }
@@ -547,12 +800,62 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster 
                     onDrop={(e) => handleDrop(e, 'pick', 'red', index)}
                     onDropAtPriority={(e, priority) => {
                       e.preventDefault();
-                      if (draggedChampion) {
+                      if (draggedChampion && showAllPrios) {
+                        const championId = draggedChampion.champion_id || draggedChampion.id;
+                        const championKey = draggedChampion.champion_key || draggedChampion.key;
+
+                        // Build complete new scenario state
+                        let newScenario = { ...scenario };
+
+                        // Step 1: Remove from old slot if dragged from a slot
                         if (draggedFromSlot) {
-                          const { type, side, index: fromIndex } = draggedFromSlot;
-                          removeChampion(type, side, fromIndex, draggedChampion.champion_id || draggedChampion.id);
+                          const { type: fromType, side: fromSide, index: fromIndex } = draggedFromSlot;
+                          const fromKey = fromType === 'ban' ? `${fromSide}_bans` : `${fromSide}_picks`;
+                          const fromArray = [...(newScenario[fromKey] || [])];
+                          const fromChampions = normalizeChampions(fromArray[fromIndex]);
+
+                          // Remove the dragged champion
+                          const filtered = fromChampions.filter(c => c.champion_id !== championId);
+                          fromArray[fromIndex] = filtered.length > 0 ? filtered.map((c, i) => ({ ...c, priority: i + 1 })) : null;
+                          newScenario[fromKey] = fromArray;
                         }
-                        addChampionAtPriority(draggedChampion, 'pick', 'red', index, priority);
+
+                        // Step 2: Add at specific priority
+                        const toKey = 'red_picks';
+                        const toArray = [...(newScenario[toKey] || [])];
+                        const currentChampions = normalizeChampions(toArray[index]);
+
+                        // Check if already exists in this slot
+                        const alreadyExists = currentChampions.some(c => c.champion_id === championId);
+
+                        // Limit to max 5 priorities
+                        if (!alreadyExists && currentChampions.length >= 5) {
+                          setDraggedChampion(null);
+                          setDraggedFromSlot(null);
+                          return;
+                        }
+
+                        // Remove if already exists (for reordering)
+                        const filtered = currentChampions.filter(c => c.champion_id !== championId);
+
+                        // Insert at target priority position
+                        const newChampion = {
+                          champion_id: championId,
+                          champion_key: championKey,
+                          role: draggedChampion.isRolePlaceholder ? draggedChampion.role : (draggedChampion.role || getRoleForIndex(index)),
+                          priority: priority,
+                          isRolePlaceholder: draggedChampion.isRolePlaceholder || false
+                        };
+
+                        filtered.splice(priority - 1, 0, newChampion);
+
+                        // Re-assign priorities
+                        toArray[index] = filtered.map((c, i) => ({ ...c, priority: i + 1 }));
+                        newScenario[toKey] = toArray;
+
+                        // Update in one go
+                        onUpdate(newScenario);
+                        setUpdateTrigger(prev => prev + 1);
                         setDraggedChampion(null);
                         setDraggedFromSlot(null);
                       }
@@ -587,6 +890,7 @@ function BanSlotWithPrio({ champions, side, onSelect, onRemoveChampion, isSelect
   const firstPrio = champions[0];
   const otherPrios = champions.slice(1);
   const hasPrios = otherPrios.length > 0;
+  const banNumber = slotInfo.index + 1; // 1-5
 
   return (
     <div className="relative flex flex-col items-center">
@@ -622,6 +926,15 @@ function BanSlotWithPrio({ champions, side, onSelect, onRemoveChampion, isSelect
                           onDragStart={(e) => onDragStart(e, champion, slotInfo)}
                         />
                       )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveChampion(champion.champion_id);
+                        }}
+                        className="absolute top-0.5 right-0.5 w-3 h-3 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        <X className="w-2 h-2 text-white" />
+                      </button>
                       <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-[8px] px-1 rounded">
                         {priority}
                       </div>
@@ -642,7 +955,7 @@ function BanSlotWithPrio({ champions, side, onSelect, onRemoveChampion, isSelect
       <div
         onClick={onSelect}
         onDragOver={onDragOver}
-        onDrop={(e) => onDropAtPriority(e, 1)}
+        onDrop={onDrop}
         className={`
           rounded-lg border-2 cursor-pointer
           flex items-center justify-center relative overflow-hidden
@@ -656,26 +969,52 @@ function BanSlotWithPrio({ champions, side, onSelect, onRemoveChampion, isSelect
           <div className="relative w-full h-full group">
             {firstPrio.isRolePlaceholder ? (
               // Role Placeholder Display
-              <div
-                className="w-full h-full flex items-center justify-center bg-slate-700/30 opacity-50 cursor-move"
-                draggable
-                onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
-              >
-                <RoleIcon role={firstPrio.role || firstPrio.champion_key?.toUpperCase()} size={isExpanded ? 20 : 28} />
-              </div>
+              <>
+                <div
+                  className="w-full h-full flex items-center justify-center bg-slate-700/30 opacity-50 cursor-move"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+                >
+                  <RoleIcon role={firstPrio.role || firstPrio.champion_key?.toUpperCase()} size={isExpanded ? 20 : 28} />
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveChampion(firstPrio.champion_id);
+                  }}
+                  className={`absolute top-1 right-1 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center ${
+                    isExpanded ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                  }`}
+                >
+                  <X className={`text-white ${isExpanded ? 'w-2 h-2' : 'w-2.5 h-2.5'}`} />
+                </button>
+              </>
             ) : (
               // Champion Display
-              <img
-                src={getChampionIcon(firstPrio.champion_key)}
-                alt={firstPrio.champion_key}
-                className="w-full h-full object-cover opacity-40 scale-120"
-                draggable
-                onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
-              />
+              <>
+                <img
+                  src={getChampionIcon(firstPrio.champion_key)}
+                  alt={firstPrio.champion_key}
+                  className="w-full h-full object-cover opacity-40 scale-120"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, firstPrio, slotInfo)}
+                />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveChampion(firstPrio.champion_id);
+                  }}
+                  className={`absolute top-1 right-1 bg-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center ${
+                    isExpanded ? 'w-3.5 h-3.5' : 'w-4 h-4'
+                  }`}
+                >
+                  <X className={`text-white ${isExpanded ? 'w-2 h-2' : 'w-2.5 h-2.5'}`} />
+                </button>
+              </>
             )}
           </div>
         ) : (
-          <span className={`${isExpanded ? 'text-[8px]' : 'text-[10px]'} text-slate-500`}>Ban</span>
+          <span className={`${isExpanded ? 'text-[8px]' : 'text-[10px]'} text-slate-500`}>Ban {banNumber}</span>
         )}
 
         {/* Priority indicator - only visible when NOT expanded */}
@@ -761,7 +1100,7 @@ function PickSlotWithPrio({ champions, side, pickNumber, onSelect, onRemoveChamp
       <div
         onClick={onSelect}
         onDragOver={onDragOver}
-        onDrop={(e) => onDropAtPriority(e, 1)}
+        onDrop={onDrop}
         className={`
           rounded-lg border-2 cursor-pointer
           flex items-center justify-center relative overflow-hidden
@@ -894,7 +1233,7 @@ function divisionToRoman(division) {
 }
 
 // Player Card with Champion Pool Hover
-function PlayerCardWithChampionPool({ player }) {
+function PlayerCardWithChampionPool({ player, isLocked = true }) {
   const [showChampionPool, setShowChampionPool] = useState(false);
 
   // Fetch champion pool with SWR (prefetch immediately, not on hover)
@@ -916,7 +1255,11 @@ function PlayerCardWithChampionPool({ player }) {
   return (
     <Link
       to={`/players/${player.player_id}`}
-      className="bg-slate-800/50 border border-purple-500/30 rounded-lg p-3 hover:border-purple-500 hover:bg-slate-800/70 transition-all group relative"
+      className={`rounded-lg p-3 transition-all group relative ${
+        isLocked
+          ? 'bg-slate-800/50 border border-purple-500/30 hover:border-purple-500 hover:bg-slate-800/70'
+          : 'bg-slate-800/30 border border-dashed border-yellow-500/30 hover:border-yellow-500 hover:bg-slate-800/50'
+      }`}
       onMouseEnter={() => setShowChampionPool(true)}
       onMouseLeave={() => setShowChampionPool(false)}
     >
@@ -949,10 +1292,16 @@ function PlayerCardWithChampionPool({ player }) {
           src={getSummonerIconUrl(player.profile_icon_id)}
           alt={player.summoner_name}
           onError={handleSummonerIconError}
-          className="w-10 h-10 rounded-full border-2 border-purple-500/50 group-hover:border-purple-500 transition-colors"
+          className={`w-10 h-10 rounded-full border-2 transition-colors ${
+            isLocked
+              ? 'border-purple-500/50 group-hover:border-purple-500'
+              : 'border-yellow-500/50 group-hover:border-yellow-500'
+          }`}
         />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors truncate">
+          <div className={`text-sm font-semibold text-white transition-colors truncate ${
+            isLocked ? 'group-hover:text-purple-300' : 'group-hover:text-yellow-300'
+          }`}>
             {player.summoner_name}
           </div>
         </div>
@@ -960,8 +1309,12 @@ function PlayerCardWithChampionPool({ player }) {
 
       {/* Champion Pool Popup */}
       {showChampionPool && (
-        <div className="absolute left-0 top-full mt-2 bg-slate-900 border-2 border-purple-500/50 rounded-lg p-3 shadow-xl shadow-purple-500/20 z-50 w-full overflow-y-auto" style={{ maxHeight: '290px' }}>
-          <div className="text-xs font-semibold text-purple-300 mb-2">Champion Pool (PL)</div>
+        <div className={`absolute left-0 top-full mt-2 bg-slate-900 border-2 rounded-lg p-3 shadow-xl z-50 w-full overflow-y-auto ${
+          isLocked
+            ? 'border-purple-500/50 shadow-purple-500/20'
+            : 'border-yellow-500/50 shadow-yellow-500/20'
+        }`} style={{ maxHeight: '290px' }}>
+          <div className={`text-xs font-semibold mb-2 ${isLocked ? 'text-purple-300' : 'text-yellow-300'}`}>Champion Pool (PL)</div>
           {isLoading ? (
             <div className="text-xs text-slate-400">Loading...</div>
           ) : championPool.length > 0 ? (

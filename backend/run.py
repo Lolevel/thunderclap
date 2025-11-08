@@ -3,6 +3,7 @@ Application entry point
 """
 import os
 from app import create_app, db
+from app.scheduler_config import init_scheduler
 
 # Get configuration from environment
 config_name = os.environ.get('FLASK_ENV', 'development')
@@ -10,6 +11,9 @@ config_name = os.environ.get('FLASK_ENV', 'development')
 # Create application
 app = create_app(config_name)
 
+# Initialize scheduler
+with app.app_context():
+    init_scheduler(app)
 
 @app.shell_context_processor
 def make_shell_context():

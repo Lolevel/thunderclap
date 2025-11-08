@@ -80,15 +80,6 @@
   }
 }
 
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
 @layer base {
   * {
     border-color: var(--color-border);
@@ -117,12 +108,10 @@
     @apply bg-surface-hover;
   }
 }
-/* Global button cursor */  button {    @apply cursor-pointer;  }  button:disabled {    @apply cursor-not-allowed;  }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-300 cursor-pointer;
-    @apply hover:scale-105 active:scale-95;
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-300;
     @apply focus:outline-none focus-visible:outline-none;
   }
 
@@ -147,7 +136,6 @@
   }
 
   .btn-ghost {
-.btn:disabled {    @apply opacity-50 cursor-not-allowed hover:scale-100 active:scale-100;  }
     @apply bg-transparent text-text-secondary hover:bg-slate-800/30 hover:text-text-primary;
     @apply transition-all duration-300;
   }
@@ -194,23 +182,6 @@
 
   .animate-fade-in {
     animation: fade-in 0.3s ease-in-out;
-  }
-
-  .animate-pulse-slow {
-    animation: pulse-slow 3s ease-in-out infinite;
-  }
-
-  /* Clickable elements */
-  .clickable {
-    @apply cursor-pointer transition-all duration-200;
-  }
-
-  .clickable:hover {
-    @apply brightness-110;
-  }
-
-  .clickable:active {
-    @apply scale-95;
   }
 }
 

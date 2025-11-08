@@ -7,7 +7,7 @@ const Sidebar = () => {
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/teams', icon: Users, label: 'Teams' },
-    { path: '/players', icon: TrendingUp, label: 'Spieler' },
+    { path: '/players', icon: TrendingUp, label: 'Players' },
   ];
 
   const isActive = (path) => {

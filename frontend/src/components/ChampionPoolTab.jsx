@@ -179,7 +179,6 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 							</thead>
 							<tbody>
 								{team_champion_pool
-									.slice(0, 15)
 									.map((champ, index) => {
 										const isExpanded = expandedChampions.has(champ.champion_id);
 										const hasMultiplePlayers = champ.has_multiple_players;
@@ -716,6 +715,9 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 															Games
 														</th>
 														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
+															Bans
+														</th>
+														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
 															W-L
 														</th>
 														<th className="text-center py-2 px-3 text-text-muted font-medium text-sm">
@@ -760,6 +762,13 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 															<td className="py-3 px-3 text-center">
 																<span className="font-bold text-primary text-base">
 																	{champ.games}
+																</span>
+															</td>
+
+															{/* Bans */}
+															<td className="py-3 px-3 text-center">
+																<span className="text-red-400 font-semibold">
+																	{champ.bans_against || 0}
 																</span>
 															</td>
 
@@ -816,30 +825,35 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 									const roleOrder = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 									let sortedPlayers = [...playerPools.players];
 
-									// If we have predictions, sort first 5 by predicted lineup
+									// If we have predictions, sort first 5 by predicted lineup ORDER
 									if (predictions && predictions.length > 0 && predictions[0].predicted_lineup) {
 										const predictedLineup = predictions[0].predicted_lineup;
-										const predictedPlayerIds = roleOrder.map(role =>
-											predictedLineup[role]?.player_id
-										).filter(id => id);
+										// Create map of player_id to their position in predicted lineup (0-4)
+										const predictedPlayerOrder = {};
+										roleOrder.forEach((role, idx) => {
+											const playerId = predictedLineup[role]?.player_id;
+											if (playerId) {
+												predictedPlayerOrder[playerId] = idx;
+											}
+										});
 
 										// Separate predicted and non-predicted players
 										const predictedPlayers = [];
 										const otherPlayers = [];
 
 										sortedPlayers.forEach(player => {
-											if (predictedPlayerIds.includes(player.player_id)) {
+											if (player.player_id in predictedPlayerOrder) {
 												predictedPlayers.push(player);
 											} else {
 												otherPlayers.push(player);
 											}
 										});
 
-										// Sort predicted players by role order
+										// Sort predicted players by their ORDER in predicted lineup (not by role!)
 										predictedPlayers.sort((a, b) => {
-											const aIndex = roleOrder.indexOf(a.role);
-											const bIndex = roleOrder.indexOf(b.role);
-											return aIndex - bIndex;
+											const aOrder = predictedPlayerOrder[a.player_id];
+											const bOrder = predictedPlayerOrder[b.player_id];
+											return aOrder - bOrder;
 										});
 
 										// Sort other players by role
