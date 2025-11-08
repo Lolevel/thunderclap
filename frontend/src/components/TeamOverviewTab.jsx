@@ -290,25 +290,23 @@ const TeamOverviewTab = ({ teamId }) => {
 			</div>
 
 			{/* Quick Stats Grid */}
-			{report && !reportLoading ? (
+			{report && !reportLoading && report.side_performance && report.side_performance.blue && report.side_performance.red ? (
 				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 					{/* Side Preference */}
-					{report.side_performance && (
-						<div className="card bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20">
-							<div className="flex items-center justify-center gap-2 mb-2">
-								<Shield className="w-4 h-4 text-indigo-400" />
-								<span className="text-text-muted text-xs">Side Preference</span>
-							</div>
-							<div className="text-center">
-								<p className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-									{report.side_performance.blue.winrate > report.side_performance.red.winrate ? 'Blue Side' : 'Red Side'}
-								</p>
-								<p className="text-xs text-text-muted mt-1">
-									{Math.max(report.side_performance.blue.winrate, report.side_performance.red.winrate).toFixed(0)}% WR
-								</p>
-							</div>
+					<div className="card bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20">
+						<div className="flex items-center justify-center gap-2 mb-2">
+							<Shield className="w-4 h-4 text-indigo-400" />
+							<span className="text-text-muted text-xs">Side Preference</span>
 						</div>
-					)}
+						<div className="text-center">
+							<p className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+								{report.side_performance.blue.winrate > report.side_performance.red.winrate ? 'Blue Side' : 'Red Side'}
+							</p>
+							<p className="text-xs text-text-muted mt-1">
+								{Math.max(report.side_performance.blue.winrate, report.side_performance.red.winrate).toFixed(0)}% WR
+							</p>
+						</div>
+					</div>
 
 					{/* Average Game Duration */}
 					<div className="card bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border border-blue-500/20">
