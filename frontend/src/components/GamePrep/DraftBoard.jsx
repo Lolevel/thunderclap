@@ -362,9 +362,10 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
               — {displayRoster.name}
             </span>
             {!isLocked && (
-              <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
-                <span className="text-xs font-semibold text-yellow-300 uppercase tracking-wide">
-                  ⚠ Not Final
+              <div className="ml-auto flex items-center gap-2 px-3.5 py-1.5 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+                <span className="text-xs font-semibold text-yellow-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="text-base leading-none -translate-y-0.5">⚠</span>
+                  <span>Not Final</span>
                 </span>
               </div>
             )}
