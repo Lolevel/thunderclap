@@ -325,23 +325,21 @@ const Players = () => {
                   </div>
 
                   {/* Rank Badge */}
-                  {player.soloq && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors duration-300">
-                      {player.soloq.icon_url && (
-                        <img
-                          src={player.soloq.icon_url}
-                          alt={player.soloq.display}
-                          className="w-5 h-5 rounded-full"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                          }}
-                        />
-                      )}
-                      <span className="text-xs font-semibold text-white">
-                        {player.soloq.display}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors duration-300">
+                    {player.soloq?.icon_url && (
+                      <img
+                        src={player.soloq.icon_url}
+                        alt={player.soloq.display}
+                        className="w-5 h-5 rounded-full"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <span className="text-xs font-semibold text-white">
+                      {player.soloq?.display || 'Unranked'}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}

@@ -12,7 +12,7 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 	const { playerPools, isLoading: poolsLoading, isValidating: poolsValidating } = usePlayerChampionPools(teamId);
 
 	const [activeView, setActiveView] = useState('team'); // 'team' or 'players'
-	const [playerViewMode, setPlayerViewMode] = useState('overview'); // 'overview' or 'comparison'
+	const [playerViewMode, setPlayerViewMode] = useState('comparison'); // 'overview' or 'comparison'
 	const [expandedChampions, setExpandedChampions] = useState(new Set());
 	const [expandedBansPhase1, setExpandedBansPhase1] = useState(false);
 	const [expandedBansPhase2, setExpandedBansPhase2] = useState(false);

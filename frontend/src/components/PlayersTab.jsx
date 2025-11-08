@@ -236,39 +236,30 @@ const PlayersTab = ({
 
 						{/* Rank Display - Fixed width 180px */}
 						<div className="w-[180px] flex-shrink-0">
-							{entry.player.soloq && (
-								<div className="flex items-center gap-2 px-2.5 py-1 bg-primary/5 rounded border border-primary/20 w-full justify-center">
-									{entry.player.soloq.icon_url && (
-										<div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0">
-											<img
-												src={entry.player.soloq.icon_url}
-												alt={entry.player.soloq.display}
-												className="w-full h-full object-cover scale-110"
-												onError={(e) => {
-													e.target.style.display = 'none';
-												}}
-											/>
-										</div>
-									)}
-									<div className="flex items-center gap-1.5">
-										<span className="text-xs font-semibold text-text-primary whitespace-nowrap">
-											{entry.player.soloq.display}
-										</span>
+							<div className="flex items-center gap-2 px-2.5 py-1 bg-primary/5 rounded border border-primary/20 w-full justify-center">
+								{entry.player.soloq?.icon_url && (
+									<div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0">
+										<img
+											src={entry.player.soloq.icon_url}
+											alt={entry.player.soloq.display}
+											className="w-full h-full object-cover scale-110"
+											onError={(e) => {
+												e.target.style.display = 'none';
+											}}
+										/>
+									</div>
+								)}
+								<div className="flex items-center gap-1.5">
+									<span className="text-xs font-semibold text-text-primary whitespace-nowrap">
+										{entry.player.soloq?.display || 'Unranked'}
+									</span>
+									{entry.player.soloq?.lp !== undefined && (
 										<span className="text-xs text-text-muted">
 											{entry.player.soloq.lp}LP
 										</span>
-									</div>
+									)}
 								</div>
-							)}
-
-							{/* Unranked */}
-							{!entry.player.soloq && !entry.player.flexq && (
-								<div className="flex items-center justify-center">
-									<span className="text-xs text-text-muted px-2 py-1 bg-surface-hover rounded">
-										Unranked
-									</span>
-								</div>
-							)}
+							</div>
 						</div>
 
 						{/* Actions - Fixed */}
