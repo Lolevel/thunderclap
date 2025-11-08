@@ -7,6 +7,7 @@ import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHe
 import { usePlayers } from '../hooks/api/usePlayer';
 import { useTeams } from '../hooks/api/useTeam';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
+import TeamLogo from '../components/TeamLogo';
 
 const Players = () => {
   const [enrichedPlayers, setEnrichedPlayers] = useState([]);
@@ -218,11 +219,17 @@ const Players = () => {
                           setSelectedTeam(team.id);
                           setIsTeamDropdownOpen(false);
                         }}
-                        className={`px-4 py-3 hover:bg-slate-700 cursor-pointer transition-colors ${
+                        className={`px-4 py-3 hover:bg-slate-700 cursor-pointer transition-colors flex items-center gap-3 ${
                           selectedTeam === team.id ? 'bg-cyan-500/20 text-cyan-300' : 'text-white'
                         }`}
                       >
-                        {team.name}
+                        <TeamLogo
+                          logoUrl={team.logo_url}
+                          teamName={team.name}
+                          size="sm"
+                          className="!w-6 !h-6 !text-xs flex-shrink-0"
+                        />
+                        <span className="truncate">{team.name}</span>
                       </div>
                     ))}
                   </div>

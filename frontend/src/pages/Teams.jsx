@@ -144,11 +144,11 @@ const Teams = () => {
                 {/* Content - Foreground */}
                 <div className="relative h-full flex flex-col justify-between p-6 z-10">
                   {/* Team Tag - Large and prominent */}
-                  <div>
-                    <div className="text-5xl font-black text-white/90 mb-2 drop-shadow-2xl transition-colors duration-300">
+                  <div className="max-w-[45%]">
+                    <div className="text-4xl font-black text-white/90 mb-2 drop-shadow-2xl transition-colors duration-300">
                       {team.tag || team.name.substring(0, 3).toUpperCase()}
                     </div>
-                    <div className="text-sm font-bold text-white/80 drop-shadow-lg transition-colors duration-300">
+                    <div className="text-sm font-bold text-white/80 drop-shadow-lg transition-colors duration-300 break-words">
                       {team.name}
                     </div>
                   </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users, List, LayoutGrid } from 'lucide-react';
+import { ChevronDown, ChevronUp, Trophy, Calendar, Clock, Users, List, LayoutGrid, ArrowLeftRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { displayRole } from '../utils/roleMapping';
 import { getItemIconUrl, filterEmptyItems, handleItemError } from '../utils/itemHelper';
@@ -250,24 +250,33 @@ const MatchHistory = ({ entityId, entityType = 'team' }) => {
                     return (
                       <div
                         key={`${match.match_id}-preview-slot-${slotIdx}`}
-                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${
-                          player?.laneswap_detected
-                            ? 'border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
-                            : 'border-border/50'
-                        } bg-surface-hover flex items-center justify-center flex-shrink-0`}
-                        title={player ? `${player.summoner_name} - ${player.champion_name}${player.laneswap_detected ? ' ⚠ Laneswap Detected' : ''}` : 'Empty slot'}
+                        className="relative w-12 flex-shrink-0"
                       >
-                        {player && getChampionUrl(player) ? (
-                          <img
-                            src={getChampionUrl(player)}
-                            alt={player.champion_name}
-                            className="w-full h-full object-cover scale-110"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <span className="text-xs text-text-muted">-</span>
+                        <div
+                          className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${
+                            player?.laneswap_detected
+                              ? 'border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.6)]'
+                              : 'border-border/50'
+                          } bg-surface-hover flex items-center justify-center`}
+                          title={player ? `${player.summoner_name} - ${player.champion_name}${player.laneswap_detected ? ' ⚠ Laneswap Detected' : ''}` : 'Empty slot'}
+                        >
+                          {player && getChampionUrl(player) ? (
+                            <img
+                              src={getChampionUrl(player)}
+                              alt={player.champion_name}
+                              className="w-full h-full object-cover scale-110"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </div>
+                        {player?.laneswap_detected && (
+                          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-purple-500 rounded-sm px-0.5 py-0.5 shadow-lg">
+                            <ArrowLeftRight className="w-3 h-3 text-white" />
+                          </div>
                         )}
                       </div>
                     );

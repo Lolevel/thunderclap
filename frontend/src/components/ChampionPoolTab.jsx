@@ -194,17 +194,18 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 												>
 													<td className="py-3 px-3">
 														<div className="flex items-center gap-2">
-															{hasMultiplePlayers && (
-																<div className="flex-shrink-0">
-																	{isExpanded ? (
+															{/* Fixed width container for chevron - always present */}
+															<div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+																{hasMultiplePlayers && (
+																	isExpanded ? (
 																		<ChevronDown className="w-4 h-4 text-primary" />
 																	) : (
 																		<ChevronRight className="w-4 h-4 text-text-muted" />
-																	)}
-																</div>
-															)}
+																	)
+																)}
+															</div>
 															{champ.champion_icon && (
-																<div className="w-8 h-8 rounded-full overflow-hidden">
+																<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
 																	<img
 																		src={champ.champion_icon}
 																		alt={champ.champion}
