@@ -290,7 +290,7 @@ const TeamOverviewTab = ({ teamId }) => {
 			</div>
 
 			{/* Quick Stats Grid */}
-			{report && !reportLoading && (
+			{report && !reportLoading ? (
 				<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 					{/* Side Preference */}
 					{report.side_performance && (
@@ -343,6 +343,12 @@ const TeamOverviewTab = ({ teamId }) => {
 							</div>
 						</div>
 					)}
+				</div>
+			) : !reportLoading && (
+				<div className="card bg-gradient-to-br from-slate-700/20 to-slate-800/20 border border-slate-600/30 text-center py-8">
+					<AlertCircle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+					<p className="text-slate-400 mb-1">Additional statistics not yet available</p>
+					<p className="text-slate-500 text-sm">Refresh team data to load in-depth statistics</p>
 				</div>
 			)}
 
