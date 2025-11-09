@@ -4,6 +4,7 @@ Core logic for refreshing team data with status tracking
 """
 import logging
 import time
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app import db
 from app.models import (

@@ -24,10 +24,115 @@ bp = Blueprint("analytics", __name__, url_prefix="/api")
 #     pass
 
 
+@bp.route("/teams/<team_id>/full-data", methods=["GET"])
+def get_team_full_data(team_id):
+    """
+    UNIFIED ENDPOINT: Get ALL team data in a single request (CACHED)
+
+    This endpoint combines data from all tabs to minimize round trips:
+    - Overview stats
+    - Roster
+    - Champion pools
+    - Draft analysis
+    - Scouting report
+    - Recent matches (limited to 20)
+
+    Returns:
+        {
+            "team_id": "uuid",
+            "team_name": "...",
+            "overview": {...},
+            "roster": {...},
+            "champion_pools": {...},
+            "draft_analysis": {...},
+            "scouting_report": {...},
+            "matches": {...}
+        }
+    """
+    from app.services.cache_service import get_cache
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import time
+
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+
+    # Try cache first
+    cache = get_cache()
+    cache_key = cache._make_key('team_full_data', team_id)
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        current_app.logger.info(f"Cache HIT: team full data {team_id}")
+        return jsonify(cached_data), 200
+
+    current_app.logger.info(f"Cache MISS: team full data {team_id} - Building...")
+    start_time = time.time()
+
+    try:
+        # Fetch all data in parallel using internal functions
+        result = {}
+
+        # Call individual endpoint functions directly (they handle their own caching)
+        # Overview
+        with current_app.test_request_context():
+            overview_response = get_team_overview(team_id)
+            if overview_response[1] == 200:
+                result['overview'] = overview_response[0].get_json()
+
+        # Roster
+        with current_app.test_request_context():
+            from app.routes.teams import get_team_roster
+            roster_response = get_team_roster(team_id)
+            if roster_response[1] == 200:
+                result['roster'] = roster_response[0].get_json()
+
+        # Champion pools
+        with current_app.test_request_context():
+            pools_response = get_team_player_champion_pools(team_id)
+            if pools_response[1] == 200:
+                result['champion_pools'] = pools_response[0].get_json()
+
+        # Draft analysis
+        with current_app.test_request_context():
+            draft_response = get_draft_analysis(team_id)
+            if draft_response[1] == 200:
+                result['draft_analysis'] = draft_response[0].get_json()
+
+        # Scouting report
+        with current_app.test_request_context():
+            report_response = get_scouting_report(team_id)
+            if report_response[1] == 200:
+                result['scouting_report'] = report_response[0].get_json()
+
+        # Matches (limited to 20)
+        with current_app.test_request_context(query_string={'limit': '20'}):
+            matches_response = get_team_matches(team_id)
+            if matches_response[1] == 200:
+                result['matches'] = matches_response[0].get_json()
+
+        # Add metadata
+        result['team_id'] = str(team_id)
+        result['team_name'] = team.name
+        result['fetched_at'] = time.time()
+
+        elapsed = time.time() - start_time
+        current_app.logger.info(f"Built full data for team {team_id} in {elapsed:.2f}s")
+
+        # Cache for 15 minutes (shorter than individual endpoints)
+        cache.set(cache_key, result, ttl=900)
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error getting full team data: {str(e)}", exc_info=True)
+        return jsonify({"error": "Failed to get full team data", "details": str(e)}), 500
+
+
 @bp.route("/teams/<team_id>/overview", methods=["GET"])
 def get_team_overview(team_id):
     """
-    Get team overview with most important stats
+    Get team overview with most important stats (CACHED)
 
     Returns:
         {
@@ -43,9 +148,22 @@ def get_team_overview(team_id):
             "player_count": 7
         }
     """
+    from app.services.cache_service import get_cache
+
     team = Team.query.get(team_id)
     if not team:
         return jsonify({"error": "Team not found"}), 404
+
+    # Try cache first
+    cache = get_cache()
+    cache_key = cache._make_key('team_overview', team_id)
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        current_app.logger.debug(f"Cache HIT: team overview {team_id}")
+        return jsonify(cached_data), 200
+
+    current_app.logger.debug(f"Cache MISS: team overview {team_id}")
 
     try:
         # Get PL stats
@@ -158,7 +276,7 @@ def get_team_overview(team_id):
                 lowest_rank_info.get('division')
             )
 
-        return jsonify({
+        result = {
             "team_id": str(team.id),
             "team_name": team.name,
             "pl_stats": pl_stats,
@@ -168,7 +286,12 @@ def get_team_overview(team_id):
             "peak_rank_info": peak_rank_info,
             "lowest_rank_info": lowest_rank_info,
             "player_count": len(active_roster)
-        }), 200
+        }
+
+        # Cache result for 30 minutes
+        cache.set(cache_key, result, ttl=1800)
+
+        return jsonify(result), 200
 
     except Exception as e:
         current_app.logger.error(f"Error getting team overview: {str(e)}")
@@ -776,7 +899,7 @@ def refresh_team_stats_stream(team_id):
             from app.utils.community_dragon import sync_champions_from_community_dragon
             from app.models.champion import Champion
 
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Starte Aktualisierung...', 'step': 'init'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Starte Aktualisierung...', 'step': 'init', 'progress_percent': 0}})}\n\n"
 
             # ========================================
             # STEP 0: Check and sync champion data if DB is empty
@@ -802,14 +925,16 @@ def refresh_team_stats_stream(team_id):
             # ========================================
             # STEP 1: Collect TOURNAMENT game IDs ONLY (FAST & EFFICIENT)
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Sammle Tournament Game-IDs...', 'step': 'collect_ids', 'total_players': total_players}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Sammle Tournament Game-IDs...', 'step': 'collect_ids', 'total_players': total_players, 'progress_percent': 5}})}\n\n"
 
             all_match_ids = set()
             player_match_map = {}  # Track which player has which matches
 
             for idx, roster_entry in enumerate(active_roster):
                 player = roster_entry.player
-                yield f"data: {json.dumps({'type': 'progress', 'data': {'current_player': player.summoner_name, 'players_processed': idx, 'step': 'collect_ids'}})}\n\n"
+                # Calculate progress: 5-25% for collecting IDs
+                progress = 5 + int((idx / total_players) * 20)
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'current_player': player.summoner_name, 'players_processed': idx, 'step': 'collect_ids', 'progress_percent': progress}})}\n\n"
 
                 try:
                     # Get ONLY tournament match IDs using type=tourney filter
@@ -861,22 +986,23 @@ def refresh_team_stats_stream(team_id):
             # ========================================
             # STEP 2: Check which games exist in DB (BATCH QUERY)
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Prüfe Datenbank...', 'step': 'check_db'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Prüfe Datenbank...', 'step': 'check_db', 'progress_percent': 25}})}\n\n"
 
             existing_matches = Match.query.filter(Match.match_id.in_(all_match_ids)).all()
             existing_match_ids = {m.match_id for m in existing_matches}
             missing_match_ids = all_match_ids - existing_match_ids
 
             current_app.logger.info(f'DB Check: {len(all_match_ids)} team game IDs, {len(existing_match_ids)} exist in DB, {len(missing_match_ids)} missing')
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{len(existing_match_ids)} Games in DB, {len(missing_match_ids)} neue', 'existing': len(existing_match_ids), 'missing': len(missing_match_ids), 'step': 'db_checked'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{len(existing_match_ids)} Games in DB, {len(missing_match_ids)} neue', 'existing': len(existing_match_ids), 'missing': len(missing_match_ids), 'step': 'db_checked', 'progress_percent': 30}})}\n\n"
 
             # ========================================
             # STEP 3: Fetch ONLY missing games from Riot API
             # ========================================
             matches_fetched = 0
+            total_missing = len(missing_match_ids) if missing_match_ids else 1  # Avoid division by zero
 
             if missing_match_ids:
-                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'Lade {len(missing_match_ids)} neue Games...', 'step': 'fetch_missing'}})}\n\n"
+                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'Lade {len(missing_match_ids)} neue Games...', 'step': 'fetch_missing', 'progress_percent': 35}})}\n\n"
 
                 for idx, match_id in enumerate(missing_match_ids):
                     try:
@@ -897,7 +1023,9 @@ def refresh_team_stats_stream(team_id):
                             matches_fetched += 1
 
                             if matches_fetched % 5 == 0:
-                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} Games geladen...', 'matches_fetched': matches_fetched, 'step': 'fetch_missing'}})}\n\n"
+                                # Progress 35-60% for fetching matches
+                                progress = 35 + int((idx / total_missing) * 25)
+                                yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} Games geladen...', 'matches_fetched': matches_fetched, 'step': 'fetch_missing', 'progress_percent': progress}})}\n\n"
 
                     except Exception as e:
                         if '429' in str(e) or 'rate limit' in str(e).lower():
@@ -908,12 +1036,12 @@ def refresh_team_stats_stream(team_id):
 
                 db.session.commit()
 
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} neue Games gespeichert', 'matches_fetched': matches_fetched, 'step': 'fetch_complete'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_fetched} neue Games gespeichert', 'matches_fetched': matches_fetched, 'step': 'fetch_complete', 'progress_percent': 60}})}\n\n"
 
             # ========================================
             # STEP 4A: First, link participants to players (for existing matches)
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Verknüpfe Participants mit Spielern...', 'step': 'link_participants'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Verknüpfe Participants mit Spielern...', 'step': 'link_participants', 'progress_percent': 65}})}\n\n"
 
             participants_linked = 0
             all_tournament_matches = Match.query.filter(
@@ -979,12 +1107,12 @@ def refresh_team_stats_stream(team_id):
                         matches_linked += 1
 
             db.session.commit()
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_linked} Games verknüpft', 'matches_linked': matches_linked, 'step': 'link_complete'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': f'{matches_linked} Games verknüpft', 'matches_linked': matches_linked, 'step': 'link_complete', 'progress_percent': 75}})}\n\n"
 
             # ========================================
             # STEP 5: Calculate team stats
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Berechne Team-Statistiken...', 'step': 'calc_stats'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Berechne Team-Statistiken...', 'step': 'calc_stats', 'progress_percent': 80}})}\n\n"
 
             stats_calculator = StatsCalculator()
             stats_result = stats_calculator.calculate_all_stats_for_team(team)
@@ -992,7 +1120,7 @@ def refresh_team_stats_stream(team_id):
             # ========================================
             # STEP 6: Fetch player ranks
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Aktualisiere Spieler-Ränge...', 'step': 'fetch_ranks'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Aktualisiere Spieler-Ränge...', 'step': 'fetch_ranks', 'progress_percent': 85}})}\n\n"
 
             from app.utils.rank_fetcher import fetch_player_rank
             ranks_updated = 0
@@ -1014,13 +1142,26 @@ def refresh_team_stats_stream(team_id):
                         ranks_failed += 1
 
             # ========================================
+            # TEAM DATA COMPLETE - Send 'complete' event
+            # ========================================
+            yield f"data: {json.dumps({'type': 'complete', 'data': {'message': 'Team-Daten aktualisiert!', 'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'ranks_updated': ranks_updated, 'progress_percent': 90}})}\n\n"
+
+            # ========================================
             # STEP 7: BACKGROUND - Fetch individual player tournament stats
             # ========================================
-            yield f"data: {json.dumps({'type': 'progress', 'data': {'message': 'Lade Spieler-Statistiken im Hintergrund...', 'step': 'player_stats_background'}})}\n\n"
+            yield f"data: {json.dumps({'type': 'background_progress', 'data': {'message': 'Lade Spieler-Statistiken...', 'player_index': 0, 'total_players': total_players}})}\n\n"
 
             # This runs in background but with progress updates
             # For each player, fetch their individual tournament games (not just team games)
             # This is for player profile stats
+
+            # ========================================
+            # STEP 6.5: Invalidate team cache
+            # ========================================
+            from app.services.cache_service import get_cache
+            cache = get_cache()
+            cache.invalidate_team(str(team.id))
+            current_app.logger.info(f"Invalidated cache for team {team.id}")
 
             # Send completion with team stats
             yield f"data: {json.dumps({'type': 'complete', 'data': {'matches_fetched': matches_fetched, 'matches_linked': matches_linked, 'champions_updated': stats_result.get('champions_updated', 0), 'players_processed': total_players, 'ranks_updated': ranks_updated, 'ranks_failed': ranks_failed, 'message': 'Team-Aktualisierung abgeschlossen!'}})}\n\n"
@@ -1072,16 +1213,25 @@ def refresh_team_stats_stream(team_id):
         except Exception as e:
             current_app.logger.error(f"Error in refresh stream: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            # CRITICAL: Always remove DB session after SSE stream completes
+            # This prevents connection pool exhaustion
+            db.session.remove()
+            current_app.logger.info(f"SSE stream completed for team {team_id}, DB session removed")
 
-    return Response(
+    # CORS headers for SSE
+    response = Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
             'X-Accel-Buffering': 'no',
-            'Connection': 'keep-alive'
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
         }
     )
+    return response
 
 
 @bp.route("/teams/<team_id>/matches", methods=["GET"])
@@ -1596,4 +1746,78 @@ def get_team_refresh_status(team_id):
         return jsonify(refresh_status.to_dict()), 200
     except Exception as e:
         current_app.logger.error(f"Error fetching refresh status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/admin/trigger-nightly-refresh", methods=["POST"])
+def trigger_nightly_refresh():
+    """
+    ADMIN ENDPOINT: Manually trigger the nightly refresh for all teams.
+    Useful for testing the scheduler logic without waiting until 4 AM.
+
+    Returns:
+        {
+            "message": "Nightly refresh triggered for N teams",
+            "teams_count": N
+        }
+    """
+    try:
+        from app.services.refresh_scheduler import RefreshScheduler
+
+        teams = Team.query.all()
+        teams_count = len(teams)
+
+        if teams_count == 0:
+            return jsonify({"message": "No teams found", "teams_count": 0}), 200
+
+        # Trigger refresh in background (same logic as nightly job)
+        RefreshScheduler.refresh_all_teams(current_app._get_current_object())
+
+        return jsonify({
+            "message": f"Nightly refresh triggered for {teams_count} teams",
+            "teams_count": teams_count
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error triggering nightly refresh: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/admin/scheduler-status", methods=["GET"])
+def get_scheduler_status():
+    """
+    ADMIN ENDPOINT: Get status of scheduled jobs
+
+    Returns:
+        {
+            "scheduler_running": true,
+            "jobs": [
+                {
+                    "id": "nightly_team_refresh",
+                    "name": "Nightly Team Data Refresh",
+                    "next_run_time": "2025-01-04T04:00:00"
+                }
+            ]
+        }
+    """
+    try:
+        from app.scheduler_config import get_scheduler
+
+        scheduler = get_scheduler()
+        jobs_info = []
+
+        for job in scheduler.get_jobs():
+            jobs_info.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": str(job.next_run_time) if job.next_run_time else None
+            })
+
+        return jsonify({
+            "scheduler_running": scheduler.running,
+            "jobs": jobs_info
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching scheduler status: {str(e)}")
         return jsonify({"error": str(e)}), 500

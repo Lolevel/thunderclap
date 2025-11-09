@@ -8,7 +8,7 @@ import {
 	Link2,
 } from 'lucide-react';
 
-const RefreshProgressModal = ({ teamId, onComplete, onError }) => {
+const RefreshProgressModal = ({ teamId, onComplete, onError, onStatusUpdate }) => {
 	const [status, setStatus] = useState('connecting'); // connecting, running, completed, background, background_complete, error
 	const [progress, setProgress] = useState({
 		matches_fetched: 0,
@@ -18,6 +18,8 @@ const RefreshProgressModal = ({ teamId, onComplete, onError }) => {
 		current_player: '',
 		total_players: 0,
 		message: 'Verbinde...',
+		phase: 'connecting',
+		progress_percent: 0,
 	});
 	const [isRateLimited, setIsRateLimited] = useState(false);
 	const [backgroundProgress, setBackgroundProgress] = useState({
@@ -54,20 +56,51 @@ const RefreshProgressModal = ({ teamId, onComplete, onError }) => {
 				console.log('Progress update:', data);
 
 				if (data.type === 'progress') {
-					setProgress((prev) => ({
-						...prev,
+					const newProgress = {
+						...progress,
 						...data.data,
-					}));
+					};
+					setProgress(newProgress);
+
+					// Send status update to parent for status bar
+					if (onStatusUpdate) {
+						onStatusUpdate({
+							status: 'running',
+							phase: data.data.step || 'processing',
+							progress_percent: data.data.progress_percent || 0,
+							is_rate_limited: false,
+						});
+					}
 				} else if (data.type === 'rate_limit') {
 					setIsRateLimited(true);
 					setProgress((prev) => ({
 						...prev,
 						message: `Rate Limit erreicht - Warte ${data.wait_seconds}s...`,
 					}));
-					setTimeout(
-						() => setIsRateLimited(false),
-						data.wait_seconds * 1000
-					);
+
+					// Send rate limit status to parent
+					if (onStatusUpdate) {
+						onStatusUpdate({
+							status: 'running',
+							phase: 'rate_limit',
+							progress_percent: progress.progress_percent || 0,
+							is_rate_limited: true,
+							wait_seconds: data.wait_seconds,
+						});
+					}
+
+					setTimeout(() => {
+						setIsRateLimited(false);
+						// Clear rate limit status
+						if (onStatusUpdate) {
+							onStatusUpdate({
+								status: 'running',
+								phase: progress.phase || 'processing',
+								progress_percent: progress.progress_percent || 0,
+								is_rate_limited: false,
+							});
+						}
+					}, data.wait_seconds * 1000);
 				} else if (data.type === 'complete') {
 					// Team stats are complete, but background tasks continue
 					setStatus('completed');

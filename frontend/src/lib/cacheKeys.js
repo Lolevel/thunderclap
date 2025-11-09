@@ -9,6 +9,7 @@ export const cacheKeys = {
   // Teams
   teams: () => '/teams',
   team: (teamId) => `/teams/${teamId}`,
+  teamFullData: (teamId) => `/teams/${teamId}/full-data`,  // OPTIMIZED: All data in one request
   teamStats: (teamId) => `/teams/${teamId}/stats`,
   teamRoster: (teamId) => `/teams/${teamId}/roster`,
   teamOverview: (teamId) => `/teams/${teamId}/overview`,
@@ -61,6 +62,7 @@ export function getRelatedKeys(resource, id) {
   const related = {
     team: [
       cacheKeys.team(id),
+      cacheKeys.teamFullData(id),  // OPTIMIZED: Invalidate full data cache too
       cacheKeys.teamStats(id),
       cacheKeys.teamRoster(id),
       cacheKeys.teamOverview(id),

@@ -18,10 +18,11 @@ def init_scheduler(app):
     Should be called after Flask app is created.
     """
     project_env = os.getenv('PROJECT_ENV', 'development')
+    enable_scheduler = os.getenv('ENABLE_NIGHTLY_REFRESH', 'false').lower() == 'true'
 
-    # Only schedule nightly refreshes in production
-    if project_env == 'production':
-        logger.info("🕐 Initializing scheduled jobs (production mode)")
+    # Schedule nightly refreshes if enabled OR in production
+    if project_env == 'production' or enable_scheduler:
+        logger.info("🕐 Initializing scheduled jobs")
 
         # Schedule nightly refresh at 4:00 AM
         scheduler.add_job(
@@ -34,8 +35,12 @@ def init_scheduler(app):
             replace_existing=True
         )
         logger.info("  ✓ Scheduled: Nightly team refresh at 4:00 AM")
+
+        if project_env == 'development':
+            logger.info("  ℹ️  Development mode - Scheduler enabled via ENABLE_NIGHTLY_REFRESH=true")
     else:
-        logger.info("🕐 Scheduler initialized (development mode - no scheduled jobs)")
+        logger.info("🕐 Scheduler initialized (development mode - scheduled jobs disabled)")
+        logger.info("  ℹ️  Set ENABLE_NIGHTLY_REFRESH=true in .env to enable nightly refreshes in development")
 
     # Start scheduler
     if not scheduler.running:

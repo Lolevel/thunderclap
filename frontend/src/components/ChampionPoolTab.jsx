@@ -6,10 +6,14 @@ import { ChampionPoolSkeleton } from './ui/Skeleton';
 import { displayRole } from '../utils/roleMapping';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 
-const ChampionPoolTab = ({ teamId, predictions }) => {
-	// Use SWR hooks for data fetching
-	const { draftData, isLoading: draftLoading, isError: draftError, isValidating: draftValidating } = useDraftAnalysis(teamId);
-	const { playerPools, isLoading: poolsLoading, isValidating: poolsValidating } = usePlayerChampionPools(teamId);
+const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
+	// Use SWR hooks for data fetching (will use cache if preloadedData populated it)
+	const { draftData: draftDataSWR, isLoading: draftLoading, isError: draftError, isValidating: draftValidating } = useDraftAnalysis(teamId);
+	const { playerPools: playerPoolsSWR, isLoading: poolsLoading, isValidating: poolsValidating } = usePlayerChampionPools(teamId);
+
+	// Use preloaded data if available, otherwise use SWR result
+	const draftData = preloadedData?.draftAnalysis || draftDataSWR;
+	const playerPools = preloadedData?.championPools?.players || playerPoolsSWR;
 
 	const [activeView, setActiveView] = useState('team'); // 'team' or 'players'
 	const [playerViewMode, setPlayerViewMode] = useState('comparison'); // 'overview' or 'comparison'
@@ -29,8 +33,8 @@ const ChampionPoolTab = ({ teamId, predictions }) => {
 		});
 	};
 
-	// Show skeleton on initial load
-	if (draftLoading || poolsLoading) {
+	// Show skeleton on initial load (skip if we have preloaded data)
+	if (!preloadedData && (draftLoading || poolsLoading)) {
 		return <ChampionPoolSkeleton />;
 	}
 

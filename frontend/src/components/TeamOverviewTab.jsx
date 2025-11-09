@@ -5,10 +5,14 @@ import { RefreshIndicator } from './ui/RefreshIndicator';
 import { TeamOverviewSkeleton } from './ui/Skeleton';
 import { getChampionSplashUrl, handleSplashError } from '../utils/championHelper';
 
-const TeamOverviewTab = ({ teamId }) => {
-	// Use SWR hooks for data fetching
-	const { overview, isLoading, isError, isValidating } = useTeamOverview(teamId);
-	const { report, isLoading: reportLoading } = useScoutingReport(teamId);
+const TeamOverviewTab = ({ teamId, preloadedData }) => {
+	// Use SWR hooks for data fetching (will use cache if preloadedData populated it)
+	const { overview: overviewSWR, isLoading, isError, isValidating } = useTeamOverview(teamId);
+	const { report: reportSWR, isLoading: reportLoading } = useScoutingReport(teamId);
+
+	// Use preloaded data if available, otherwise use SWR result
+	const overview = preloadedData || overviewSWR;
+	const report = reportSWR; // Report is from scouting-report endpoint, might be in fullData too
 
 	const formatDuration = (seconds) => {
 		if (!seconds) return 'N/A';
@@ -17,8 +21,8 @@ const TeamOverviewTab = ({ teamId }) => {
 		return `${minutes}:${String(secs).padStart(2, '0')}`;
 	};
 
-	// Show skeleton on initial load
-	if (isLoading) {
+	// Show skeleton on initial load (skip if we have preloaded data)
+	if (!preloadedData && isLoading) {
 		return <TeamOverviewSkeleton />;
 	}
 

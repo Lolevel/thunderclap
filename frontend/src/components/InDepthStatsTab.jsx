@@ -3,9 +3,12 @@ import { useScoutingReport } from '../hooks/api/useTeam';
 import { RefreshIndicator } from './ui/RefreshIndicator';
 import { StatsCardSkeleton } from './ui/Skeleton';
 
-const InDepthStatsTab = ({ teamId }) => {
-	// Use SWR hook for data fetching
-	const { report, isLoading, isError, isValidating } = useScoutingReport(teamId);
+const InDepthStatsTab = ({ teamId, preloadedData }) => {
+	// Use SWR hook for data fetching (will use cache if preloadedData populated it)
+	const { report: reportSWR, isLoading, isError, isValidating } = useScoutingReport(teamId);
+
+	// Use preloaded data if available, otherwise use SWR result
+	const report = preloadedData || reportSWR;
 
 	const formatDuration = (seconds) => {
 		if (!seconds) return 'N/A';
@@ -14,8 +17,8 @@ const InDepthStatsTab = ({ teamId }) => {
 		return `${minutes}:${String(secs).padStart(2, '0')}`;
 	};
 
-	// Show skeleton on initial load
-	if (isLoading) {
+	// Show skeleton on initial load (skip if we have preloaded data)
+	if (!preloadedData && isLoading) {
 		return (
 			<div className="space-y-6">
 				{[...Array(4)].map((_, i) => (

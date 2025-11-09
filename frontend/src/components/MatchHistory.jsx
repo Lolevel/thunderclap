@@ -10,17 +10,23 @@ import { usePlayerMatches } from '../hooks/api/usePlayer';
  * Reusable Match History Component for both Team and Player views
  * @param {string} entityId - The ID of the team or player
  * @param {string} entityType - Either 'team' or 'player'
+ * @param {object} preloadedData - OPTIMIZED: Pre-loaded match data from parent
  */
-const MatchHistory = ({ entityId, entityType = 'team' }) => {
+const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
   const [expandedMatches, setExpandedMatches] = useState(new Set());
   const [matchesLimit, setMatchesLimit] = useState(entityType === 'team' ? 50 : 20);
   const [viewMode, setViewMode] = useState('detailed'); // 'detailed' or 'simplified'
 
-  // Fetch matches with SWR
+  // Fetch matches with SWR (will use cache if preloadedData populated it)
   const teamMatchesResult = useTeamMatches(entityType === 'team' ? entityId : null, matchesLimit);
   const playerMatchesResult = usePlayerMatches(entityType === 'player' ? entityId : null, matchesLimit);
 
-  const { matches, isLoading: loading } = entityType === 'team' ? teamMatchesResult : playerMatchesResult;
+  // Use preloaded data if available, otherwise use SWR result
+  const matchesFromSWR = entityType === 'team' ? teamMatchesResult.matches : playerMatchesResult.matches;
+  const loadingFromSWR = entityType === 'team' ? teamMatchesResult.isLoading : playerMatchesResult.isLoading;
+
+  const matches = preloadedData?.matches || matchesFromSWR;
+  const loading = preloadedData ? false : loadingFromSWR;
 
   const loadMoreMatches = () => {
     const increment = entityType === 'team' ? 50 : 20;

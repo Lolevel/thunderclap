@@ -341,7 +341,7 @@ def delete_team(team_id):
 @bp.route("/<team_id>/roster", methods=["GET"])
 def get_team_roster(team_id):
     """
-    Get team roster with tournament games count for each player
+    Get team roster with tournament games count for each player (CACHED)
 
     Returns:
         {
@@ -360,14 +360,29 @@ def get_team_roster(team_id):
     """
     from app.models import Match, MatchParticipant
     from sqlalchemy import func
+    from sqlalchemy.orm import joinedload
+    from app.services.cache_service import get_cache
 
     team = Team.query.get(team_id)
     if not team:
         return jsonify({"error": "Team not found"}), 404
 
-    # Get active roster (no leave_date)
+    # Try cache first
+    cache = get_cache()
+    cache_key = cache._make_key('team_roster', team_id)
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        current_app.logger.debug(f"Cache HIT: team roster {team_id}")
+        return jsonify(cached_data), 200
+
+    current_app.logger.debug(f"Cache MISS: team roster {team_id}")
+
+    # Get active roster with eager loading of player relationship (fixes N+1)
     roster_entries = (
-        TeamRoster.query.filter_by(team_id=team_id)
+        TeamRoster.query
+        .options(joinedload(TeamRoster.player))
+        .filter_by(team_id=team_id)
         .filter(TeamRoster.leave_date.is_(None))
         .all()
     )
@@ -403,10 +418,12 @@ def get_team_roster(team_id):
 
         roster.append(roster_data)
 
-    return (
-        jsonify({"team_id": str(team_id), "team_name": team.name, "roster": roster}),
-        200,
-    )
+    result = {"team_id": str(team_id), "team_name": team.name, "roster": roster}
+
+    # Cache result for 30 minutes
+    cache.set(cache_key, result, ttl=1800)
+
+    return jsonify(result), 200
 
 
 @bp.route("/", methods=["GET"])

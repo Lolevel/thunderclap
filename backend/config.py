@@ -19,6 +19,15 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False  # Set to True for SQL query logging
 
+    # Connection Pool Settings
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 20,  # Increase from default 5
+        'max_overflow': 40,  # Increase from default 10
+        'pool_timeout': 60,  # Increase timeout from default 30
+        'pool_recycle': 3600,  # Recycle connections after 1 hour
+        'pool_pre_ping': True,  # Verify connections before using
+    }
+
     # Riot API
     RIOT_API_KEY = os.environ.get('RIOT_API_KEY')
     RIOT_REGION = os.environ.get('RIOT_REGION', 'europe')

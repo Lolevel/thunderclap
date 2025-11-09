@@ -42,7 +42,8 @@
       "Bash(xargs:*)",
       "Bash(\"C:/Users/Levi Strube/Documents/Programmieren/thunderclap/backend/requirements.txt\")",
       "Bash(node patch_teamdetail.cjs:*)",
-      "Bash(docker-compose stop:*)"
+      "Bash(docker-compose stop:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

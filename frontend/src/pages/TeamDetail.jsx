@@ -14,6 +14,7 @@ import {
 	AlertCircle,
 } from 'lucide-react';
 import { useTeamRoster, useTeamOverview } from '../hooks/api/useTeam';
+import { useTeamFullData } from '../hooks/api/useTeamFullData';
 import { useLineupPrediction } from '../hooks/api/useDraft';
 import {
 	useAddPlayer,
@@ -30,32 +31,46 @@ import InDepthStatsTab from '../components/InDepthStatsTab';
 import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
 import GamePrepTab from '../components/GamePrepTab';
-import RefreshProgressModal from '../components/RefreshProgressModal';
 import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
 import { useToast } from '../components/ToastContainer';
 import TeamLogo from '../components/TeamLogo';
 import { triggerTeamRefresh } from '../lib/api';
-import { useTeamRefreshStatus } from '../hooks/useTeamRefreshStatus';
 
 const TeamDetail = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const toast = useToast();
 
-	// Fetch team basic info
+	// OPTIMIZED: Fetch ALL team data in one request!
+	const {
+		fullData,
+		overview,
+		roster: rosterData,
+		championPools,
+		draftAnalysis,
+		scoutingReport,
+		matches,
+		isLoading: fullDataLoading,
+		isValidating: fullDataValidating,
+		refresh: refreshFullData,
+	} = useTeamFullData(id);
+
+	// Fetch team basic info (still needed for team metadata)
 	const { data: team, error: teamError, isLoading: teamLoading } = useSWR(
 		id ? cacheKeys.team(id) : null
 	);
 
-	// Fetch roster with SWR
-	const { roster, isLoading: rosterLoading, isValidating: rosterValidating, refresh: refreshRoster } = useTeamRoster(id);
+	// Extract roster from full data
+	const roster = rosterData?.roster || [];
+	const rosterLoading = fullDataLoading;
+	const rosterValidating = fullDataValidating;
+	const refreshRoster = refreshFullData; // Use full data refresh for roster
 
 	// Fetch lineup predictions
 	const { prediction: predictions } = useLineupPrediction(id);
 
-	// Prefetch data for all tabs sequentially (runs in background, one after another)
-	// This prevents lag while ensuring all data is ready when switching tabs
+	// Prefetch is now mostly handled by useTeamFullData, but keep for backwards compatibility
 	const prefetchStatus = useTeamDataPrefetch(id, !teamLoading && !teamError);
 
 	// Mutation hooks
@@ -68,11 +83,10 @@ const TeamDetail = () => {
 	const [activeTab, setActiveTab] = useState('overview');
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshStatus, setRefreshStatus] = useState(null);
-	const [showProgressModal, setShowProgressModal] = useState(false);
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
-	const completedRef = useRef(false);
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
+	const eventSourceRef = useRef(null);
 
 	const handleAddPlayer = async (opggUrl) => {
 		await addPlayer(opggUrl);
@@ -86,51 +100,8 @@ const TeamDetail = () => {
 		await removePlayer(playerId, deleteFromDb);
 	};
 
-	// Poll for refresh status when refreshing
-	const currentRefreshStatus = useTeamRefreshStatus(id, {
-		enabled: refreshing,
-		onComplete: useCallback(async () => {
-			// Prevent double execution
-			if (completedRef.current) {
-				console.log('⚠️ onComplete already fired, skipping...');
-				return;
-			}
-			completedRef.current = true;
-
-			console.log('✅ Refresh completed! Reloading team data...');
-			try {
-				await refreshTeamData();
-				toast.success('✅ Team-Daten erfolgreich aktualisiert!', 4000);
-			} catch (error) {
-				console.error('Failed to reload team data:', error);
-				toast.error('Fehler beim Neuladen der Team-Daten', 5000);
-			} finally {
-				setRefreshing(false);
-				// Reset after 2 seconds
-				setTimeout(() => {
-					completedRef.current = false;
-				}, 2000);
-			}
-		}, [refreshTeamData]),
-		onFailed: useCallback(() => {
-			console.log('❌ Refresh failed!');
-			toast.error('Fehler beim Aktualisieren der Daten', 5000);
-			setRefreshing(false);
-		}, [])
-	});
-
-	// Store current status for progress bar
-	useEffect(() => {
-		if (currentRefreshStatus) {
-			setRefreshStatus(currentRefreshStatus);
-
-			// If status is completed/failed and we're still showing as refreshing, stop it
-			if ((currentRefreshStatus.status === 'completed' || currentRefreshStatus.status === 'failed') && refreshing) {
-				console.log('⚠️ Status is', currentRefreshStatus.status, 'but refreshing is still true. Fixing...');
-				setRefreshing(false);
-			}
-		}
-	}, [currentRefreshStatus, refreshing]);
+	// REMOVED: useTeamRefreshStatus polling - we use SSE from RefreshProgressModal instead
+	// This prevents duplicate onComplete calls and toast spam
 
 	// Check on mount if a refresh is already running
 	useEffect(() => {
@@ -154,17 +125,128 @@ const TeamDetail = () => {
 		checkInitialStatus();
 	}, [id]);
 
+	// SSE connection for refresh progress
+	useEffect(() => {
+		if (!refreshing || !id) return;
+
+		// Prevent multiple connections
+		if (eventSourceRef.current) {
+			console.log('SSE already connected, skipping...');
+			return;
+		}
+
+		const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+		const cleanBaseURL = baseURL.replace(/\/api\/?$/, '');
+		const accessToken = localStorage.getItem('access_token') || import.meta.env.VITE_ACCESS_TOKEN;
+		const eventSourceUrl = `${cleanBaseURL}/api/teams/${id}/refresh-stream?token=${accessToken}`;
+
+		console.log('🔌 Opening SSE connection to:', eventSourceUrl);
+		const eventSource = new EventSource(eventSourceUrl);
+		eventSourceRef.current = eventSource;
+
+		eventSource.onopen = () => {
+			console.log('✅ SSE connection opened');
+		};
+
+		eventSource.onmessage = (event) => {
+			try {
+				const data = JSON.parse(event.data);
+				console.log('📊 Progress update:', data);
+
+				if (data.type === 'progress') {
+					setRefreshStatus({
+						status: 'running',
+						phase: data.data.step || 'processing',
+						progress_percent: data.data.progress_percent || 0,
+						is_rate_limited: false,
+					});
+				} else if (data.type === 'rate_limit') {
+					setRefreshStatus((prev) => ({
+						status: 'running',
+						phase: 'rate_limit',
+						progress_percent: prev?.progress_percent || 0,
+						is_rate_limited: true,
+						wait_seconds: data.wait_seconds,
+					}));
+
+					setTimeout(() => {
+						setRefreshStatus((prev) => ({
+							...prev,
+							is_rate_limited: false,
+						}));
+					}, data.wait_seconds * 1000);
+				} else if (data.type === 'complete') {
+					console.log('✅ Team data refresh completed!');
+					eventSource.close();
+					eventSourceRef.current = null;
+					setRefreshing(false);
+					setRefreshStatus(null);
+
+					// Refresh ALL data caches
+					Promise.all([refreshTeamData(), refreshFullData()])
+						.then(() => {
+							toast.success('✅ Team-Daten erfolgreich aktualisiert!', 4000);
+						})
+						.catch((error) => {
+							console.error('Failed to reload team data:', error);
+							toast.error('Fehler beim Neuladen der Daten', 5000);
+						});
+				} else if (data.type === 'background_complete') {
+					console.log('✅ Background tasks completed!');
+					eventSource.close();
+					eventSourceRef.current = null;
+					setRefreshing(false);
+					setRefreshStatus(null);
+
+					// Refresh caches again for background data
+					Promise.all([refreshTeamData(), refreshFullData()]);
+				} else if (data.type === 'error') {
+					console.error('❌ Refresh failed:', data.message);
+					eventSource.close();
+					eventSourceRef.current = null;
+					setRefreshing(false);
+					setRefreshStatus(null);
+					toast.error(`Fehler: ${data.message}`, 5000);
+				}
+			} catch (err) {
+				console.error('Failed to parse SSE data:', err);
+			}
+		};
+
+		eventSource.onerror = (err) => {
+			console.error('❌ SSE error:', err);
+			eventSource.close();
+			eventSourceRef.current = null;
+			setRefreshing(false);
+			setRefreshStatus(null);
+			toast.error('Verbindungsfehler beim Daten-Refresh', 5000);
+		};
+
+		return () => {
+			console.log('🧹 Cleaning up SSE connection');
+			if (eventSourceRef.current) {
+				eventSourceRef.current.close();
+				eventSourceRef.current = null;
+			}
+		};
+	}, [refreshing, id]);
+
 	const handleRefreshData = async () => {
 		try {
 			console.log('🚀 Starting refresh...');
-			completedRef.current = false; // Reset flag
 			setRefreshing(true);
+			setRefreshStatus({
+				status: 'connecting',
+				phase: 'connecting',
+				progress_percent: 0,
+				is_rate_limited: false,
+			});
 			await triggerTeamRefresh(id);
-			toast.success('Daten-Refresh gestartet', 3000);
 		} catch (error) {
 			console.error('Failed to trigger refresh:', error);
 			toast.error('Fehler beim Starten des Refresh', 5000);
 			setRefreshing(false);
+			setRefreshStatus(null);
 		}
 	};
 
@@ -247,13 +329,22 @@ const TeamDetail = () => {
 								<div className="mt-3">
 									<div className="flex items-center gap-2 mb-1">
 										<span className="text-xs text-cyan-400">
-											{refreshStatus.phase === 'collecting_matches' && 'Match-IDs sammeln'}
-											{refreshStatus.phase === 'filtering_matches' && 'Matches filtern'}
-											{refreshStatus.phase === 'fetching_matches' && 'Matches laden'}
-											{refreshStatus.phase === 'linking_data' && 'Daten verknüpfen'}
-											{refreshStatus.phase === 'calculating_stats' && 'Stats berechnen'}
-											{refreshStatus.phase === 'updating_ranks' && 'Ränge aktualisieren'}
-											{refreshStatus.phase === 'player_details' && 'Spieler-Details laden'}
+											{refreshStatus.is_rate_limited ? (
+												<span className="text-warning flex items-center gap-1">
+													⏳ Rate Limit - Warte {refreshStatus.wait_seconds}s...
+												</span>
+											) : (
+												<>
+													{refreshStatus.phase === 'collecting_matches' && 'Match-IDs sammeln'}
+													{refreshStatus.phase === 'filtering_matches' && 'Matches filtern'}
+													{refreshStatus.phase === 'fetching_matches' && 'Matches laden'}
+													{refreshStatus.phase === 'linking_data' && 'Daten verknüpfen'}
+													{refreshStatus.phase === 'calculating_stats' && 'Stats berechnen'}
+													{refreshStatus.phase === 'updating_ranks' && 'Ränge aktualisieren'}
+													{refreshStatus.phase === 'player_details' && 'Spieler-Details laden'}
+													{refreshStatus.phase === 'processing' && 'Verarbeite...'}
+												</>
+											)}
 										</span>
 										<span className="text-xs text-slate-500">
 											{refreshStatus.progress_percent}%
@@ -261,7 +352,11 @@ const TeamDetail = () => {
 									</div>
 									<div className="w-full bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
 										<div
-											className="bg-gradient-to-r from-cyan-500 to-blue-500 h-1.5 rounded-full transition-all duration-500 ease-out"
+											className={`h-1.5 rounded-full transition-all duration-500 ease-out ${
+												refreshStatus.is_rate_limited
+													? 'bg-gradient-to-r from-yellow-500 to-orange-500'
+													: 'bg-gradient-to-r from-cyan-500 to-blue-500'
+											}`}
 											style={{ width: `${refreshStatus.progress_percent}%` }}
 										/>
 									</div>
@@ -332,7 +427,12 @@ const TeamDetail = () => {
 
 				{/* Tab Content */}
 				<div>
-					{activeTab === 'overview' && <TeamOverviewTab teamId={id} />}
+					{activeTab === 'overview' && (
+						<TeamOverviewTab
+							teamId={id}
+							preloadedData={overview}
+						/>
+					)}
 
 					{activeTab === 'players' && (
 						<PlayersTab
@@ -346,25 +446,35 @@ const TeamDetail = () => {
 						/>
 					)}
 
-					{activeTab === 'matches' && <MatchHistoryTab teamId={id} />}
+					{activeTab === 'matches' && (
+						<MatchHistoryTab
+							teamId={id}
+							preloadedData={matches}
+						/>
+					)}
 
-					{activeTab === 'drafts' && <ChampionPoolTab teamId={id} predictions={predictions} />}
+					{activeTab === 'drafts' && (
+						<ChampionPoolTab
+							teamId={id}
+							predictions={predictions}
+							preloadedData={{
+								championPools,
+								draftAnalysis
+							}}
+						/>
+					)}
 
-					{activeTab === 'report' && <InDepthStatsTab teamId={id} />}
+					{activeTab === 'report' && (
+						<InDepthStatsTab
+							teamId={id}
+							preloadedData={scoutingReport}
+						/>
+					)}
 
 					{activeTab === 'gameprep' && (
 						<GamePrepTab teamId={id} team={team} roster={roster} predictions={predictions} />
 					)}
 				</div>
-
-				{/* Progress Modal */}
-				{showProgressModal && (
-					<RefreshProgressModal
-						teamId={id}
-						onComplete={handleRefreshComplete}
-						onError={handleRefreshError}
-					/>
-				)}
 
 				{/* Delete Confirmation Modal */}
 				{showDeleteModal && (
