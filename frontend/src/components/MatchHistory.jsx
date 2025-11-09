@@ -87,38 +87,40 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold text-text-primary">
+    <div className="space-y-3 md:space-y-4">
+      <div className="space-y-4">
+        <h2 className="text-lg md:text-xl font-bold text-text-primary text-center">
           Match History ({matches.length} Games)
         </h2>
 
         {/* View Mode Toggle */}
-        <div className="flex items-center gap-2 bg-surface/40 p-1 rounded-lg border border-border/50">
-          <button
-            onClick={() => setViewMode('detailed')}
-            className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${
-              viewMode === 'detailed'
-                ? 'bg-primary text-white'
-                : 'text-text-muted hover:text-text-primary'
-            }`}
-            title="Detailed View"
-          >
-            <LayoutGrid className="w-4 h-4" />
-            Detailed
-          </button>
-          <button
-            onClick={() => setViewMode('simplified')}
-            className={`px-3 py-1.5 rounded transition-all flex items-center gap-2 ${
-              viewMode === 'simplified'
-                ? 'bg-primary text-white'
-                : 'text-text-muted hover:text-text-primary'
-            }`}
-            title="Simplified View (Players Only)"
-          >
-            <List className="w-4 h-4" />
-            Players
-          </button>
+        <div className="flex justify-center">
+          <div className="rounded-xl bg-slate-800/60 backdrop-blur border border-slate-700/50 p-1 shadow-lg shadow-black/20 inline-flex gap-1">
+            <button
+              onClick={() => setViewMode('detailed')}
+              className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-sm md:text-sm ${
+                viewMode === 'detailed'
+                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+              title="Detailed View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Detailed
+            </button>
+            <button
+              onClick={() => setViewMode('simplified')}
+              className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-sm md:text-sm ${
+                viewMode === 'simplified'
+                  ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+              title="Simplified View (Players Only)"
+            >
+              <List className="w-4 h-4" />
+              Players
+            </button>
+          </div>
         </div>
       </div>
 
@@ -143,7 +145,69 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
                 match.win ? 'border-success' : 'border-error'
               }`}
             >
-              <div className="flex items-center gap-3">
+              {/* Mobile: Stack vertically */}
+              <div className="flex flex-col gap-3 md:hidden">
+                <div className="flex items-center justify-between">
+                  {/* Win/Loss Badge */}
+                  <div
+                    className={`px-3 py-1.5 rounded-lg font-bold text-center text-sm flex-shrink-0 ${
+                      match.win
+                        ? 'bg-success/20 text-success'
+                        : 'bg-error/20 text-error'
+                    }`}
+                  >
+                    {match.win ? 'W' : 'L'}
+                  </div>
+
+                  {/* Match Date */}
+                  <div className="flex items-center gap-1.5 text-xs text-text-secondary flex-shrink-0">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="whitespace-nowrap">{formatDate(match.game_creation)}</span>
+                  </div>
+                </div>
+
+                {/* Player Names with Champion Icons - 2x3 grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  {ourTeam
+                    .filter((p) => entityType === 'team' ? p.is_team_member : true)
+                    .slice(0, 5)
+                    .map((player, idx) => {
+                      // Remove Riot tag (#EUW1, #NA1, etc.) from summoner name
+                      const displayName = player.summoner_name.split('#')[0];
+
+                      return (
+                        <Link
+                          key={`${match.match_id}-player-${idx}`}
+                          to={`/players/${player.player_id}`}
+                          className="flex items-center gap-2 px-2 py-1.5 bg-surface-hover hover:bg-surface rounded-lg transition-all group"
+                          title={`${player.summoner_name} - ${player.champion_name}`}
+                        >
+                          {/* Champion Icon */}
+                          <div className="w-7 h-7 rounded overflow-hidden flex-shrink-0">
+                            {getChampionUrl(player) && (
+                              <img
+                                src={getChampionUrl(player)}
+                                alt={player.champion_name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {/* Player Name (without tag) */}
+                          <span className="text-xs font-medium text-text-primary group-hover:text-primary transition-colors truncate">
+                            {displayName}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Desktop: Horizontal layout */}
+              <div className="hidden md:flex items-center gap-3">
                 {/* Win/Loss Badge */}
                 <div
                   className={`w-16 px-2 py-2 rounded-lg font-bold text-center text-sm flex-shrink-0 ${
@@ -217,7 +281,82 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
               onClick={() => toggleMatch(match.match_id)}
               className="w-full text-left"
             >
-              <div className="flex items-center gap-6">
+              {/* Mobile: Stacked layout */}
+              <div className="flex md:hidden flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  {/* Win/Loss Badge */}
+                  <div
+                    className={`px-3 py-1.5 rounded-lg font-bold text-center text-sm flex-shrink-0 ${
+                      match.win
+                        ? 'bg-success/20 text-success'
+                        : 'bg-error/20 text-error'
+                    }`}
+                  >
+                    {match.win ? 'Sieg' : 'Niederlage'}
+                  </div>
+
+                  {/* Match Info - Compact */}
+                  <div className="flex items-center gap-3 text-xs text-text-secondary">
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{formatDate(match.game_creation)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{formatDuration(match.game_duration)}</span>
+                    </div>
+                  </div>
+
+                  {/* Expand Icon */}
+                  <div className="text-text-muted">
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Team Champions Preview - 2 rows */}
+                <div className="grid grid-cols-5 gap-1.5">
+                  {Array.from({ length: 5 }).map((_, slotIdx) => {
+                    const player = ourTeam
+                      .filter((p) => entityType === 'team' ? p.is_team_member : true)[slotIdx];
+
+                    return (
+                      <div
+                        key={`${match.match_id}-preview-slot-${slotIdx}`}
+                        className="relative"
+                      >
+                        <div
+                          className={`w-full aspect-square rounded overflow-hidden border ${
+                            player?.laneswap_detected
+                              ? 'border-purple-400'
+                              : 'border-border/50'
+                          } bg-surface-hover flex items-center justify-center`}
+                          title={player ? `${player.summoner_name} - ${player.champion_name}${player.laneswap_detected ? ' ⚠ Laneswap' : ''}` : 'Empty slot'}
+                        >
+                          {player && getChampionUrl(player) ? (
+                            <img
+                              src={getChampionUrl(player)}
+                              alt={player.champion_name}
+                              className="w-full h-full object-cover scale-110"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <span className="text-xs text-text-muted">-</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Desktop: Horizontal layout */}
+              <div className="hidden md:flex items-center gap-6">
                 {/* Win/Loss Badge - Fixed width */}
                 <div
                   className={`w-28 px-4 py-2 rounded-lg font-bold text-center flex-shrink-0 ${
@@ -305,9 +444,9 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
               <div className="mt-6 pt-6 border-t border-border space-y-6">
                 {/* Bans Section */}
                 {match.bans && (match.bans.blue.length > 0 || match.bans.red.length > 0) && (
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-text-primary">BANS</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2 md:space-y-3">
+                    <h3 className="text-xs md:text-sm font-semibold text-text-primary">BANS</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                       {/* Blue Side Bans */}
                       <div>
                         <h4 className="text-xs font-medium text-blue-400 mb-2">BLUE SIDE</h4>
@@ -389,55 +528,110 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
 
                 {/* Blue Side Team */}
                 <div>
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <h3 className="text-xs md:text-sm font-semibold mb-2 md:mb-3 flex items-center gap-2">
                     <span className="text-blue-400">BLUE SIDE</span>
                     {weAreBlue && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Unser Team</span>}
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 md:space-y-2">
                     {blueTeam.map((p, idx) => (
                       <div
                         key={`${match.match_id}-blue-${p.summoner_name}-${idx}`}
-                        className={`flex items-center gap-4 p-3 rounded-lg ${
+                        className={`rounded-lg ${
                           entityType === 'team' && p.is_team_member ? 'bg-primary/10' : 'bg-surface-hover'
                         }`}
                       >
-                        {/* Champion */}
-                        <div className="w-12 h-12 rounded-lg overflow-hidden">
-                          <img
-                            src={getChampionUrl(p)}
-                            alt={p.champion_name}
-                            className="w-full h-full object-cover scale-120"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                            }}
-                          />
-                        </div>
-
-                        {/* Player Name & Role */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p
-                              className={`font-semibold truncate ${
-                                entityType === 'team' && p.is_team_member
-                                  ? 'text-primary'
-                                  : 'text-text-muted'
-                              }`}
-                            >
-                              {p.summoner_name}
-                            </p>
-                            {entityType === 'team' && !p.is_team_member && (
-                              <span className="text-xs text-error bg-error/20 px-2 py-0.5 rounded">
-                                Extern
-                              </span>
-                            )}
+                        {/* Mobile: Compact layout */}
+                        <div className="flex md:hidden items-center gap-2 p-2">
+                          {/* Champion */}
+                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                            <img
+                              src={getChampionUrl(p)}
+                              alt={p.champion_name}
+                              className="w-full h-full object-cover scale-110"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
                           </div>
-                          <p className={`text-xs ${getRoleColor(p.role)}`}>
-                            {displayRole(p.role)}
-                          </p>
+
+                          {/* Player Name & Role */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p
+                                className={`font-semibold truncate text-sm ${
+                                  entityType === 'team' && p.is_team_member
+                                    ? 'text-primary'
+                                    : 'text-text-muted'
+                                }`}
+                              >
+                                {p.summoner_name}
+                              </p>
+                              {entityType === 'team' && !p.is_team_member && (
+                                <span className="text-xs text-error bg-error/20 px-1.5 py-0.5 rounded">
+                                  Ext
+                                </span>
+                              )}
+                              {p.laneswap_detected && (
+                                <span className="text-purple-400 text-sm">⚠</span>
+                              )}
+                            </div>
+                            <p className={`text-xs ${getRoleColor(p.role)}`}>
+                              {displayRole(p.role)}
+                            </p>
+                          </div>
+
+                          {/* KDA - Compact */}
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-semibold text-text-primary">
+                              {p.kills}/{p.deaths}/{p.assists}
+                            </p>
+                            <p className="text-xs text-text-muted">
+                              {p.deaths === 0
+                                ? 'Perfect'
+                                : ((p.kills + p.assists) / p.deaths).toFixed(1)} KDA
+                            </p>
+                          </div>
                         </div>
 
-                        {/* Laneswap Warning - Prominent in center with fixed width */}
-                        <div className="w-28 flex-shrink-0">
+                        {/* Desktop: Full layout */}
+                        <div className="hidden md:flex items-center gap-4 p-3">
+                          {/* Champion */}
+                          <div className="w-12 h-12 rounded-lg overflow-hidden">
+                            <img
+                              src={getChampionUrl(p)}
+                              alt={p.champion_name}
+                              className="w-full h-full object-cover scale-120"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+
+                          {/* Player Name & Role */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p
+                                className={`font-semibold truncate ${
+                                  entityType === 'team' && p.is_team_member
+                                    ? 'text-primary'
+                                    : 'text-text-muted'
+                                }`}
+                              >
+                                {p.summoner_name}
+                              </p>
+                              {entityType === 'team' && !p.is_team_member && (
+                                <span className="text-xs text-error bg-error/20 px-2 py-0.5 rounded">
+                                  Extern
+                                </span>
+                              )}
+                            </div>
+                            <p className={`text-xs ${getRoleColor(p.role)}`}>
+                              {displayRole(p.role)}
+                            </p>
+                          </div>
+
+                          {/* Laneswap Warning - Prominent in center with fixed width */}
+                          <div className="w-28 flex-shrink-0">
                           {p.laneswap_detected && (
                             <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/15 rounded-lg border border-purple-500/50">
                               <span className="text-purple-400 text-lg">⚠</span>
@@ -507,6 +701,7 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
                           </p>
                           <p className="text-xs text-text-muted">Vision</p>
                         </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -514,18 +709,73 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
 
                 {/* Red Side Team */}
                 <div>
-                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <h3 className="text-xs md:text-sm font-semibold mb-2 md:mb-3 flex items-center gap-2">
                     <span className="text-red-400">RED SIDE</span>
                     {!weAreBlue && <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Unser Team</span>}
                   </h3>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5 md:space-y-2">
                     {redTeam.map((p, idx) => (
                       <div
                         key={`${match.match_id}-red-${p.summoner_name}-${idx}`}
-                        className={`flex items-center gap-4 p-3 rounded-lg ${
+                        className={`rounded-lg ${
                           entityType === 'team' && p.is_team_member ? 'bg-primary/10' : 'bg-surface-hover'
                         }`}
                       >
+                        {/* Mobile: Compact layout */}
+                        <div className="flex md:hidden items-center gap-2 p-2">
+                          {/* Champion */}
+                          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                            <img
+                              src={getChampionUrl(p)}
+                              alt={p.champion_name}
+                              className="w-full h-full object-cover scale-110"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+
+                          {/* Player Name & Role */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p
+                                className={`font-semibold truncate text-sm ${
+                                  entityType === 'team' && p.is_team_member
+                                    ? 'text-primary'
+                                    : 'text-text-muted'
+                                }`}
+                              >
+                                {p.summoner_name}
+                              </p>
+                              {entityType === 'team' && !p.is_team_member && (
+                                <span className="text-xs text-error bg-error/20 px-1.5 py-0.5 rounded">
+                                  Ext
+                                </span>
+                              )}
+                              {p.laneswap_detected && (
+                                <span className="text-purple-400 text-sm">⚠</span>
+                              )}
+                            </div>
+                            <p className={`text-xs ${getRoleColor(p.role)}`}>
+                              {displayRole(p.role)}
+                            </p>
+                          </div>
+
+                          {/* KDA - Compact */}
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-semibold text-text-primary">
+                              {p.kills}/{p.deaths}/{p.assists}
+                            </p>
+                            <p className="text-xs text-text-muted">
+                              {p.deaths === 0
+                                ? 'Perfect'
+                                : ((p.kills + p.assists) / p.deaths).toFixed(1)} KDA
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Desktop: Full layout */}
+                        <div className="hidden md:flex items-center gap-4 p-3">
                         {/* Champion */}
                         <div className="w-12 h-12 rounded-lg overflow-hidden">
                           <img
@@ -631,6 +881,7 @@ const MatchHistory = ({ entityId, entityType = 'team', preloadedData }) => {
                             {p.vision_score}
                           </p>
                           <p className="text-xs text-text-muted">Vision</p>
+                        </div>
                         </div>
                       </div>
                     ))}

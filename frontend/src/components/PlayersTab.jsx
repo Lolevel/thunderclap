@@ -131,37 +131,41 @@ const PlayersTab = ({
 	return (
 		<div>
 			{/* Header with Actions */}
-			<div className="flex items-center justify-between mb-4">
-				<h2 className="text-xl font-bold text-text-primary flex items-center gap-2">
-					<Users className="w-5 h-5" />
+			<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4 mb-4">
+				<h2 className="text-lg md:text-xl font-bold text-text-primary flex items-center gap-2">
+					<Users className="w-4 h-4 md:w-5 md:h-5" />
 					Roster ({roster.length})
 				</h2>
-				<div className="flex gap-3">
+				<div className="flex flex-wrap gap-2 md:gap-3">
 					{selectedPlayers.length > 0 && (
 						<button
 							onClick={handleOpenMultiOpgg}
-							className="btn btn-accent flex items-center gap-2">
-							<ExternalLink className="w-4 h-4" />
-							Ausgewählte in OP.GG öffnen ({selectedPlayers.length})
+							className="btn btn-accent flex items-center gap-1.5 md:gap-2 text-xs md:text-sm px-2.5 md:px-4 py-1.5 md:py-2">
+							<ExternalLink className="w-3.5 h-3.5 md:w-4 md:h-4" />
+							<span className="hidden sm:inline">Ausgewählte in OP.GG öffnen ({selectedPlayers.length})</span>
+							<span className="sm:hidden">Auswahl ({selectedPlayers.length})</span>
 						</button>
 					)}
 					<button
 						onClick={handleOpenFullTeamOpgg}
-						className="btn btn-secondary flex items-center gap-2">
-						<ExternalLink className="w-4 h-4" />
-						Team OP.GG
+						className="btn btn-secondary flex items-center gap-1.5 md:gap-2 text-xs md:text-sm px-2.5 md:px-4 py-1.5 md:py-2">
+						<ExternalLink className="w-3.5 h-3.5 md:w-4 md:h-4" />
+						<span className="hidden sm:inline">Team OP.GG</span>
+						<span className="sm:hidden">OP.GG</span>
 					</button>
 					<button
 						onClick={() => setShowSyncModal(true)}
-						className="btn btn-secondary flex items-center gap-2">
-						<RefreshCw className="w-4 h-4" />
-						Mit OP.GG synchronisieren
+						className="btn btn-secondary flex items-center gap-1.5 md:gap-2 text-xs md:text-sm px-2.5 md:px-4 py-1.5 md:py-2">
+						<RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4" />
+						<span className="hidden sm:inline">Mit OP.GG synchronisieren</span>
+						<span className="sm:hidden">Sync</span>
 					</button>
 					<button
 						onClick={() => setShowAddPlayerModal(true)}
-						className="btn btn-primary flex items-center gap-2">
-						<UserPlus className="w-4 h-4" />
-						Spieler hinzufügen
+						className="btn btn-primary flex items-center gap-1.5 md:gap-2 text-xs md:text-sm px-2.5 md:px-4 py-1.5 md:py-2">
+						<UserPlus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+						<span className="hidden sm:inline">Spieler hinzufügen</span>
+						<span className="sm:hidden">+</span>
 					</button>
 				</div>
 			</div>
@@ -171,25 +175,25 @@ const PlayersTab = ({
 				{sortedRoster.map((entry) => (
 					<div
 						key={`${entry.id}-${entry.player.id}`}
-						className="flex items-center gap-3 px-4 py-2.5 bg-surface/40 hover:bg-surface-hover rounded-lg border border-border/50 hover:border-primary/30 transition-all duration-200 group">
+						className="flex items-center gap-2 md:gap-3 px-2 sm:px-3 md:px-4 py-2 md:py-2.5 bg-surface/40 hover:bg-surface-hover rounded-lg border border-border/50 hover:border-primary/30 transition-all duration-200 group">
 						{/* Checkbox - Fixed */}
 						<button
 							onClick={() => togglePlayerSelection(entry.player.id)}
-							className="w-4 flex-shrink-0">
+							className="w-3.5 md:w-4 flex-shrink-0">
 							{selectedPlayers.includes(entry.player.id) ? (
-								<CheckSquare className="w-4 h-4 text-primary" />
+								<CheckSquare className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
 							) : (
-								<Square className="w-4 h-4 text-text-muted" />
+								<Square className="w-3.5 h-3.5 md:w-4 md:h-4 text-text-muted" />
 							)}
 						</button>
 
 						{/* Role icon - Fixed */}
-						<div className="w-5 flex-shrink-0">
-							<RoleIcon role={entry.role} size={20} />
+						<div className="w-4 md:w-5 flex-shrink-0">
+							<RoleIcon role={entry.role} size={16} className="md:w-5 md:h-5" />
 						</div>
 
 						{/* Player Icon - Fixed */}
-						<div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
+						<div className="w-7 h-7 md:w-8 md:h-8 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
 							<img
 								src={getSummonerIconUrl(entry.player.profile_icon_id)}
 								alt={entry.player.summoner_name}
@@ -202,14 +206,14 @@ const PlayersTab = ({
 						<Link
 							to={`/players/${entry.player.id}`}
 							className="flex-1 min-w-0">
-							<h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
+							<h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate text-sm md:text-base">
 								{entry.player.summoner_name}
 							</h3>
 						</Link>
 
-						{/* Tournament Games Count - Fixed width 100px */}
-						<div className="w-[100px] flex-shrink-0">
-							<div className="flex flex-col items-center gap-0.5">
+						{/* Tournament Games Count - Hidden on mobile */}
+						<div className="hidden md:flex w-[100px] flex-shrink-0">
+							<div className="flex flex-col items-center gap-0.5 w-full">
 								<div className="flex items-center gap-1.5">
 									<span className="text-sm font-bold text-text-primary">
 										{entry.tournament_games || 0}
@@ -234,11 +238,11 @@ const PlayersTab = ({
 							</div>
 						</div>
 
-						{/* Rank Display - Fixed width 180px */}
-						<div className="w-[180px] flex-shrink-0">
-							<div className="flex items-center gap-2 px-2.5 py-1 bg-primary/5 rounded border border-primary/20 w-full justify-center">
+						{/* Rank Display - Compact on mobile */}
+						<div className="w-auto sm:w-[140px] md:w-[180px] flex-shrink-0">
+							<div className="flex items-center gap-1 md:gap-2 px-1.5 sm:px-2.5 py-0.5 sm:py-1 bg-primary/5 rounded border border-primary/20 justify-center">
 								{entry.player.soloq?.icon_url && (
-									<div className="w-5 h-5 rounded-full overflow-hidden flex-shrink-0">
+									<div className="w-4 h-4 md:w-5 md:h-5 rounded-full overflow-hidden flex-shrink-0">
 										<img
 											src={entry.player.soloq.icon_url}
 											alt={entry.player.soloq.display}
@@ -249,7 +253,7 @@ const PlayersTab = ({
 										/>
 									</div>
 								)}
-								<div className="flex items-center gap-1.5">
+								<div className="flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
 									<span className="text-xs font-semibold text-text-primary whitespace-nowrap">
 										{entry.player.soloq?.display || 'Unranked'}
 									</span>
@@ -263,18 +267,18 @@ const PlayersTab = ({
 						</div>
 
 						{/* Actions - Fixed */}
-						<div className="flex items-center gap-1 flex-shrink-0">
+						<div className="flex items-center gap-0.5 md:gap-1 flex-shrink-0">
 							<button
 								onClick={() => openPlayerOpgg(entry.player.id)}
-								className="p-1.5 hover:bg-primary/10 rounded transition-colors"
+								className="p-1 md:p-1.5 hover:bg-primary/10 rounded transition-colors"
 								title="OP.GG öffnen">
-								<ExternalLink className="w-3.5 h-3.5 text-primary" />
+								<ExternalLink className="w-3 h-3 md:w-3.5 md:h-3.5 text-primary" />
 							</button>
 							<button
 								onClick={() => setShowRemoveConfirm(entry)}
-								className="p-1.5 hover:bg-error/10 rounded transition-colors"
+								className="p-1 md:p-1.5 hover:bg-error/10 rounded transition-colors"
 								title="Spieler entfernen">
-								<Trash2 className="w-3.5 h-3.5 text-error" />
+								<Trash2 className="w-3 h-3 md:w-3.5 md:h-3.5 text-error" />
 							</button>
 						</div>
 					</div>
@@ -305,10 +309,10 @@ const PlayersTab = ({
 											? 'bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30'
 											: 'bg-surface/40'
 									}`}>
-									<div className="flex items-center justify-between mb-4">
-										<div className="flex items-center gap-3">
+									<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 md:mb-4">
+										<div className="flex items-center gap-2 md:gap-3">
 											<div
-												className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
+												className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-base md:text-lg ${
 													idx === 0
 														? 'bg-gradient-to-br from-primary to-accent text-white'
 														: 'bg-surface-lighter text-text-secondary'
@@ -316,21 +320,21 @@ const PlayersTab = ({
 												{idx + 1}
 											</div>
 											<div>
-												<h4 className="font-semibold text-text-primary">
+												<h4 className="font-semibold text-text-primary text-sm md:text-base">
 													{idx === 0
 														? 'Most Likely Lineup'
 														: `Alternative ${idx}`}
 												</h4>
-												<div className="flex items-center gap-2 text-sm text-text-muted">
-													<TrendingUp className="w-3.5 h-3.5" />
+												<div className="flex items-center gap-1.5 md:gap-2 text-xs md:text-sm text-text-muted">
+													<TrendingUp className="w-3 h-3 md:w-3.5 md:h-3.5" />
 													<span>{prediction.overall_confidence}% Confidence</span>
 												</div>
 											</div>
 										</div>
 
 										{/* Confidence Bar */}
-										<div className="w-32">
-											<div className="h-2 bg-slate-700/50 rounded-full overflow-hidden">
+										<div className="w-full sm:w-32">
+											<div className="h-1.5 md:h-2 bg-slate-700/50 rounded-full overflow-hidden">
 												<div
 													className={`h-full transition-all ${
 														prediction.overall_confidence >= 80
@@ -348,7 +352,7 @@ const PlayersTab = ({
 									</div>
 
 									{/* Lineup Players */}
-									<div className="grid grid-cols-5 gap-3">
+									<div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
 										{['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'].map((role) => {
 											const playerInfo = prediction.predicted_lineup[role];
 											if (!playerInfo) return null;
@@ -360,10 +364,10 @@ const PlayersTab = ({
 											return (
 												<div
 													key={role}
-													className="flex flex-col items-center gap-2 p-3 bg-surface/40 rounded-lg border border-border/50">
+													className="flex flex-col items-center gap-2 p-2 md:p-3 bg-surface/40 rounded-lg border border-border/50">
 													{/* Role Icon */}
-													<div className="flex items-center gap-2">
-														<RoleIcon role={role} size={16} />
+													<div className="flex items-center gap-1.5 md:gap-2">
+														<RoleIcon role={role} size={14} className="md:w-4 md:h-4" />
 														<span className="text-xs font-semibold text-text-muted">
 															{displayRole(role)}
 														</span>
@@ -371,7 +375,7 @@ const PlayersTab = ({
 
 													{/* Player Icon */}
 													{rosterEntry && (
-														<div className="w-12 h-12 rounded-lg overflow-hidden border border-border/50">
+														<div className="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden border border-border/50">
 															<img
 																src={getSummonerIconUrl(
 																	rosterEntry.player.profile_icon_id
@@ -384,8 +388,8 @@ const PlayersTab = ({
 													)}
 
 													{/* Player Name */}
-													<div className="text-center">
-														<p className="text-sm font-semibold text-text-primary truncate max-w-full">
+													<div className="text-center w-full">
+														<p className="text-xs md:text-sm font-semibold text-text-primary truncate">
 															{playerInfo.player_name}
 														</p>
 														<p className="text-xs text-text-muted">

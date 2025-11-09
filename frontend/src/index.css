@@ -153,7 +153,7 @@
   }
 
   .card {
-    @apply bg-slate-800/40 backdrop-blur rounded-xl p-6;
+    @apply bg-slate-800/40 backdrop-blur rounded-xl p-4 md:p-6;
     @apply border border-slate-700/50;
     @apply shadow-lg shadow-black/20;
     @apply transition-all duration-300;
@@ -217,5 +217,15 @@
 @layer utilities {
   .text-gradient {
     @apply bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

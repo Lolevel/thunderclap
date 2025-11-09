@@ -69,23 +69,23 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 			<div className="space-y-6">
 			{/* Header Info */}
 			<div className="card bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
-				<div className="flex items-center justify-between">
-					<div>
-						<h2 className="text-xl font-bold text-text-primary mb-1">
+				<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+					<div className="text-center md:text-left flex-1">
+						<h2 className="text-lg md:text-xl font-bold text-text-primary mb-1">
 							Champion Pool & Draft Patterns
 						</h2>
-						<p className="text-text-secondary">
+						<p className="text-sm text-text-secondary">
 							Based on {matches_analyzed} matches analyzed
 						</p>
 					</div>
 					{side_performance && (
-						<div className="flex gap-4">
+						<div className="flex gap-4 md:gap-6">
 							<div className="text-center">
-								<div className="text-sm text-text-muted mb-1">
+								<div className="text-xs md:text-sm text-text-muted mb-1">
 									Blue Side
 								</div>
 								<div
-									className={`text-lg font-bold ${
+									className={`text-base md:text-lg font-bold ${
 										side_performance.blue.winrate >= 50
 											? 'text-success'
 											: 'text-error'
@@ -98,11 +98,11 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 								</div>
 							</div>
 							<div className="text-center">
-								<div className="text-sm text-text-muted mb-1">
+								<div className="text-xs md:text-sm text-text-muted mb-1">
 									Red Side
 								</div>
 								<div
-									className={`text-lg font-bold ${
+									className={`text-base md:text-lg font-bold ${
 										side_performance.red.winrate >= 50
 											? 'text-success'
 											: 'text-error'
@@ -121,28 +121,30 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 
 			{/* View Toggle */}
 			<div className="flex justify-center">
-				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 p-1.5 inline-flex gap-1">
+				<div className="rounded-xl bg-slate-800/60 backdrop-blur border border-slate-700/50 p-1 shadow-lg shadow-black/20 inline-flex gap-1">
 					<button
 						onClick={() => setActiveView('team')}
-						className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-300 font-medium ${
+						className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-xs md:text-sm ${
 							activeView === 'team'
-								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20'
+								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
 								: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
 						}`}
 					>
-						<Target className="w-4 h-4" />
-						Team Champion Pool
+						<Target className="w-3.5 h-3.5 md:w-4 md:h-4" />
+						<span className="hidden sm:inline">Team Champion Pool</span>
+						<span className="sm:hidden">Team</span>
 					</button>
 					<button
 						onClick={() => setActiveView('players')}
-						className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-all duration-300 font-medium ${
+						className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-xs md:text-sm ${
 							activeView === 'players'
-								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/20'
+								? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
 								: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
 						}`}
 					>
-						<Users className="w-4 h-4" />
-						Player Champion Pools
+						<Users className="w-3.5 h-3.5 md:w-4 md:h-4" />
+						<span className="hidden sm:inline">Player Champion Pools</span>
+						<span className="sm:hidden">Players</span>
 					</button>
 				</div>
 			</div>
@@ -152,12 +154,84 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 				<>
 			{/* Team Champion Pool */}
 			<div className="card">
-				<h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-					<Target className="w-5 h-5 text-primary" />
+				<h3 className="text-base md:text-lg font-bold text-text-primary mb-3 md:mb-4 flex items-center gap-2">
+					<Target className="w-4 h-4 md:w-5 md:h-5 text-primary" />
 					Team Champion Pool
 				</h3>
 				{team_champion_pool && team_champion_pool.length > 0 ? (
-					<div className="overflow-x-auto">
+					<>
+					{/* Mobile: Cards */}
+					<div className="md:hidden space-y-3">
+						{team_champion_pool.map((champ, index) => {
+							// Determine card style based on winrate
+							const isHighWR = champ.winrate >= 60;
+							const isMedWR = champ.winrate >= 50 && champ.winrate < 60;
+							const isLowWR = champ.winrate < 50;
+
+							return (
+								<div
+									key={index}
+									className={`rounded-xl p-3 border-2 transition-all duration-300 ${
+										isHighWR
+											? 'bg-gradient-to-br from-emerald-500/10 via-green-500/5 to-transparent border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+											: isMedWR
+											? 'bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-transparent border-blue-500/30 shadow-lg shadow-blue-500/10'
+											: 'bg-gradient-to-br from-red-500/10 via-orange-500/5 to-transparent border-red-500/30 shadow-lg shadow-red-500/10'
+									}`}
+								>
+									<div className="flex items-center gap-3 mb-3">
+										{champ.champion_icon && (
+											<div className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 ring-2 ${
+												isHighWR ? 'ring-emerald-500/50' : isMedWR ? 'ring-blue-500/50' : 'ring-red-500/50'
+											}`}>
+												<img
+													src={champ.champion_icon}
+													alt={champ.champion}
+													className="w-full h-full object-cover scale-110"
+													onError={(e) => {
+														e.target.style.display = 'none';
+													}}
+												/>
+											</div>
+										)}
+										<div className="flex-1 min-w-0">
+											<p className="font-bold text-text-primary truncate">{champ.champion}</p>
+											<p className="text-xs text-text-secondary truncate">{champ.player || 'N/A'}</p>
+											{champ.picks >= 1 && champ.bans_against > 0 && (
+												<div className="flex items-center gap-1 mt-1">
+													<Ban className="w-3 h-3 text-error" />
+													<span className="text-xs text-error font-medium">{champ.bans_against} Bans</span>
+												</div>
+											)}
+										</div>
+										<div className={`px-3 py-1.5 rounded-lg ${
+											isHighWR ? 'bg-emerald-500/20' : isMedWR ? 'bg-blue-500/20' : 'bg-red-500/20'
+										}`}>
+											<p className={`text-lg font-bold ${
+												isHighWR ? 'text-emerald-400' : isMedWR ? 'text-blue-400' : 'text-red-400'
+											}`}>
+												{champ.winrate.toFixed(0)}%
+											</p>
+											<p className="text-xs text-text-muted text-center">WR</p>
+										</div>
+									</div>
+									<div className="grid grid-cols-2 gap-3">
+										<div className="bg-slate-800/40 rounded-lg p-2 text-center">
+											<p className="text-xs text-text-muted mb-1">Picks</p>
+											<p className="font-bold text-text-primary">{champ.picks}</p>
+										</div>
+										<div className="bg-slate-800/40 rounded-lg p-2 text-center">
+											<p className="text-xs text-text-muted mb-1">Record</p>
+											<p className="font-medium text-text-secondary">{champ.wins}W - {champ.losses}L</p>
+										</div>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+
+					{/* Desktop: Table */}
+					<div className="hidden md:block overflow-x-auto">
 						<table className="w-full">
 							<thead>
 								<tr className="border-b border-border">
@@ -307,6 +381,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 							</tbody>
 						</table>
 					</div>
+					</>
 				) : (
 					<p className="text-center py-8 text-text-muted">
 						No champion data available
@@ -635,10 +710,10 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 			{/* Player Champion Pools View */}
 			{activeView === 'players' && (
 				<div className="card">
-					<div className="flex items-center justify-between mb-6">
-						<div>
-							<h3 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
-								<Users className="w-5 h-5 text-primary" />
+					<div className="flex flex-col gap-4 mb-6">
+						<div className="text-center md:text-left">
+							<h3 className="text-base md:text-lg font-bold text-text-primary mb-2 flex items-center justify-center md:justify-start gap-2">
+								<Users className="w-4 h-4 md:w-5 md:h-5 text-primary" />
 								Player Champion Pools
 							</h3>
 							<p className="text-sm text-text-muted">
@@ -647,29 +722,31 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 						</div>
 
 						{/* View Mode Toggle */}
-						<div className="rounded-lg bg-slate-700/30 p-1 inline-flex gap-1">
-							<button
-								onClick={() => setPlayerViewMode('overview')}
-								className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 text-sm font-medium ${
-									playerViewMode === 'overview'
-										? 'bg-slate-600 text-white shadow-md'
-										: 'text-slate-400 hover:text-white'
-								}`}
-							>
-								<List className="w-4 h-4" />
-								Overview
-							</button>
-							<button
-								onClick={() => setPlayerViewMode('comparison')}
-								className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all duration-300 text-sm font-medium ${
-									playerViewMode === 'comparison'
-										? 'bg-slate-600 text-white shadow-md'
-										: 'text-slate-400 hover:text-white'
-								}`}
-							>
-								<Columns className="w-4 h-4" />
-								Comparison
-							</button>
+						<div className="flex justify-center">
+							<div className="rounded-xl bg-slate-800/60 backdrop-blur border border-slate-700/50 p-1 shadow-lg shadow-black/20 inline-flex gap-1">
+								<button
+									onClick={() => setPlayerViewMode('overview')}
+									className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-sm md:text-sm ${
+										playerViewMode === 'overview'
+											? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
+											: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+									}`}
+								>
+									<List className="w-4 h-4" />
+									Overview
+								</button>
+								<button
+									onClick={() => setPlayerViewMode('comparison')}
+									className={`flex items-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 rounded-lg transition-all duration-300 font-medium text-sm md:text-sm ${
+										playerViewMode === 'comparison'
+											? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/30'
+											: 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+									}`}
+								>
+									<Columns className="w-4 h-4" />
+									Comparison
+								</button>
+							</div>
 						</div>
 					</div>
 
