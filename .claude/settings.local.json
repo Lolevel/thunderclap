@@ -43,7 +43,11 @@
       "Bash(\"C:/Users/Levi Strube/Documents/Programmieren/thunderclap/backend/requirements.txt\")",
       "Bash(node patch_teamdetail.cjs:*)",
       "Bash(docker-compose stop:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(for i in {1..5})",
+      "Bash(do curl -s http://localhost:5000/api/teams/)",
+      "Bash(git checkout backend/app/services/primeleague_scraper.py)",
+      "Bash(awk '{print $NF}')"
     ],
     "deny": [],
     "ask": []

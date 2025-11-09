@@ -40,7 +40,7 @@ const TeamOverviewTab = ({ teamId, preloadedData }) => {
 		);
 	}
 
-	const { pl_stats, top_5_champions, average_rank, average_rank_info, peak_rank_info, lowest_rank_info, player_count } = overview;
+	const { pl_stats, top_5_champions, average_rank, average_rank_info, peak_rank_info, lowest_rank_info, player_count } = overview || {};
 
 	return (
 		<>
@@ -49,42 +49,50 @@ const TeamOverviewTab = ({ teamId, preloadedData }) => {
 
 			<div className="space-y-5">
 			{/* Prime League Stats */}
-			<div className="card bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-indigo-500/10 border border-blue-500/20">
-				<h2 className="text-lg font-bold text-text-primary mb-4 flex items-center justify-center gap-2">
-					<Trophy className="w-5 h-5 text-blue-400" />
-					Prime League Statistics
-				</h2>
-				<div className="flex items-center justify-center gap-6">
-					<div className="text-center">
-						<div className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-blue-500 bg-clip-text text-transparent">
-							{pl_stats.games}
+			{pl_stats && pl_stats.games > 0 ? (
+				<div className="card bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-indigo-500/10 border border-blue-500/20">
+					<h2 className="text-lg font-bold text-text-primary mb-4 flex items-center justify-center gap-2">
+						<Trophy className="w-5 h-5 text-blue-400" />
+						Prime League Statistics
+					</h2>
+					<div className="flex items-center justify-center gap-6">
+						<div className="text-center">
+							<div className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-blue-500 bg-clip-text text-transparent">
+								{pl_stats.games}
+							</div>
+							<div className="text-text-muted text-xs mt-1">Games</div>
 						</div>
-						<div className="text-text-muted text-xs mt-1">Games</div>
-					</div>
-					<div className="h-10 w-px bg-gradient-to-b from-blue-500/0 via-purple-500/50 to-blue-500/0"></div>
-					<div className="text-center">
-						<div className="text-2xl font-bold text-success">
-							{pl_stats.wins}
+						<div className="h-10 w-px bg-gradient-to-b from-blue-500/0 via-purple-500/50 to-blue-500/0"></div>
+						<div className="text-center">
+							<div className="text-2xl font-bold text-success">
+								{pl_stats.wins}
+							</div>
+							<div className="text-text-muted text-xs mt-1">Wins</div>
 						</div>
-						<div className="text-text-muted text-xs mt-1">Wins</div>
-					</div>
-					<div className="text-center">
-						<div className="text-2xl font-bold text-error">
-							{pl_stats.losses}
+						<div className="text-center">
+							<div className="text-2xl font-bold text-error">
+								{pl_stats.losses}
+							</div>
+							<div className="text-text-muted text-xs mt-1">Losses</div>
 						</div>
-						<div className="text-text-muted text-xs mt-1">Losses</div>
-					</div>
-					<div className="h-10 w-px bg-gradient-to-b from-blue-500/0 via-purple-500/50 to-blue-500/0"></div>
-					<div className="text-center">
-						<div className={`text-3xl font-bold ${
-							pl_stats.winrate >= 50 ? 'text-success' : 'text-error'
-						}`}>
-							{pl_stats.winrate.toFixed(0)}%
+						<div className="h-10 w-px bg-gradient-to-b from-blue-500/0 via-purple-500/50 to-blue-500/0"></div>
+						<div className="text-center">
+							<div className={`text-3xl font-bold ${
+								pl_stats.winrate >= 50 ? 'text-success' : 'text-error'
+							}`}>
+								{pl_stats.winrate.toFixed(0)}%
+							</div>
+							<div className="text-text-muted text-xs mt-1">Winrate</div>
 						</div>
-						<div className="text-text-muted text-xs mt-1">Winrate</div>
 					</div>
 				</div>
-			</div>
+			) : (
+				<div className="card bg-gradient-to-br from-slate-700/20 to-slate-800/20 border border-slate-600/30 text-center py-8">
+					<AlertCircle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+					<p className="text-slate-400 mb-1">No Prime League statistics available</p>
+					<p className="text-slate-500 text-sm">Refresh team data to load Prime League stats</p>
+				</div>
+			)}
 
 			{/* Team Rank Statistics */}
 			{average_rank_info && (

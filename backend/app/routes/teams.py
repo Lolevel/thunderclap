@@ -448,7 +448,11 @@ def list_teams():
         "per_page", current_app.config["ITEMS_PER_PAGE"], type=int
     )
 
-    pagination = Team.query.paginate(page=page, per_page=per_page, error_out=False)
+    # Eager load rosters and players to avoid N+1 queries
+    from app.models import TeamRoster
+    pagination = Team.query.options(
+        db.joinedload(Team.rosters).joinedload(TeamRoster.player)
+    ).paginate(page=page, per_page=per_page, error_out=False)
 
     return (
         jsonify(
@@ -822,6 +826,13 @@ def remove_player_from_roster(team_id, player_id):
 
         db.session.commit()
 
+        # Invalidate roster cache
+        from app.services.cache_service import get_cache
+        cache = get_cache()
+        cache_key = cache._make_key('team_roster', team_id)
+        cache.delete(cache_key)
+        current_app.logger.debug(f"Invalidated roster cache for team {team_id}")
+
         return (
             jsonify(
                 {
@@ -980,6 +991,13 @@ def add_player_to_roster(team_id):
         current_app.logger.info(
             f"Added player {player.summoner_name} to team {team.name}"
         )
+
+        # Invalidate roster cache
+        from app.services.cache_service import get_cache
+        cache = get_cache()
+        cache_key = cache._make_key('team_roster', team_id)
+        cache.delete(cache_key)
+        current_app.logger.debug(f"Invalidated roster cache for team {team_id}")
 
         return (
             jsonify(
@@ -1193,6 +1211,13 @@ def sync_roster_from_opgg(team_id):
         # Update team OP.GG URL
         team.opgg_url = opgg_url
         db.session.commit()
+
+        # Invalidate roster cache
+        from app.services.cache_service import get_cache
+        cache = get_cache()
+        cache_key = cache._make_key('team_roster', team_id)
+        cache.delete(cache_key)
+        current_app.logger.debug(f"Invalidated roster cache for team {team_id}")
 
         return (
             jsonify(

@@ -67,4 +67,10 @@ def create_app(config_name='development'):
     def health():
         return {'status': 'ok', 'service': 'Prime League Scout API'}
 
+    # Ensure database sessions are properly cleaned up after each request
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        """Remove database sessions at the end of the request"""
+        db.session.remove()
+
     return app

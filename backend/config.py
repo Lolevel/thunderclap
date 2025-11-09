@@ -50,6 +50,15 @@ class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_ECHO = True
 
+    # Reduce pool size in development (Flask reloader creates 2 processes)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': 5,  # Smaller pool for dev
+        'max_overflow': 10,
+        'pool_timeout': 30,
+        'pool_recycle': 3600,
+        'pool_pre_ping': True,
+    }
+
 
 class ProductionConfig(Config):
     """Production configuration"""

@@ -9,8 +9,35 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [urlWarning, setUrlWarning] = useState(null);
 
   if (!isOpen) return null;
+
+  // Validate Prime League URL format
+  const validatePrimeleagueUrl = (url) => {
+    if (!url) {
+      setUrlWarning(null);
+      return true;
+    }
+
+    // Correct format: /de/leagues/prm/.../teams/...
+    // Wrong format: /de/leagues/teams/...
+    const correctPattern = /primeleague\.gg\/de\/leagues\/[^/]+\/[^/]+\/teams\//;
+    const wrongPattern = /primeleague\.gg\/de\/leagues\/teams\//;
+
+    if (wrongPattern.test(url) && !correctPattern.test(url)) {
+      setUrlWarning('Falsches URL-Format! Bitte den Link aus der Liga-Ansicht verwenden.');
+      return false;
+    }
+
+    if (!correctPattern.test(url)) {
+      setUrlWarning('Ungültiges URL-Format. Bitte Link aus Liga-Ansicht verwenden.');
+      return false;
+    }
+
+    setUrlWarning(null);
+    return true;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,6 +49,13 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
       let response;
 
       if (importType === 'team') {
+        // Validate URL before submitting
+        if (!validatePrimeleagueUrl(primeleagueUrl)) {
+          setError('Bitte korrigiere die URL und versuche es erneut.');
+          setLoading(false);
+          return;
+        }
+
         response = await api.post('/teams/import', {
           primeleague_url: primeleagueUrl,
         });
@@ -50,6 +84,7 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
     setOpggUrl('');
     setError(null);
     setSuccess(false);
+    setUrlWarning(null);
     onClose();
   };
 
@@ -108,13 +143,22 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
               <input
                 type="url"
                 value={primeleagueUrl}
-                onChange={(e) => setPrimeleagueUrl(e.target.value)}
-                placeholder="https://www.primeleague.gg/de/leagues/.../teams/..."
-                className="input w-full"
+                onChange={(e) => {
+                  setPrimeleagueUrl(e.target.value);
+                  validatePrimeleagueUrl(e.target.value);
+                }}
+                placeholder="https://www.primeleague.gg/de/leagues/prm/.../teams/..."
+                className={`input w-full ${urlWarning ? 'border-yellow-500 focus:border-yellow-500' : ''}`}
                 required
               />
+              {urlWarning && (
+                <div className="flex items-center gap-2 mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                  <p className="text-xs text-yellow-500">{urlWarning}</p>
+                </div>
+              )}
               <p className="text-xs text-text-muted mt-1">
-                Füge den Link zur PrimeLeague Team-Seite ein. Team Name, Tag, Logo und bestätigte Spieler werden automatisch importiert.
+                Füge den Link zur PrimeLeague Team-Seite ein (aus der Liga-Ansicht, nicht die generische Team-Seite).
               </p>
             </div>
           ) : (

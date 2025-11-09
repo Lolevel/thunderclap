@@ -327,23 +327,29 @@ class MatchFetcher:
 
     def _store_match(self, match_data: Dict[str, Any]) -> Match:
         """
-        Store match and participants in database
+        Store match and participants in database (idempotent - skips if exists)
 
         Args:
             match_data: Match data from Riot API
 
         Returns:
-            Created Match model instance
+            Match model instance (existing or newly created)
         """
         metadata = match_data.get('metadata', {})
         info = match_data.get('info', {})
+        match_id = metadata.get('matchId')
+
+        # Check if match already exists (IMPORTANT: Avoid duplicate key errors)
+        existing_match = Match.query.filter_by(match_id=match_id).first()
+        if existing_match:
+            return existing_match
 
         # Check if tournament game
         is_tournament = self.riot_client.is_tournament_game(match_data)
 
         # Create match
         match = Match(
-            match_id=metadata.get('matchId'),
+            match_id=match_id,
             game_creation=info.get('gameCreation'),
             game_duration=info.get('gameDuration'),
             game_version=info.get('gameVersion'),

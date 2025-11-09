@@ -224,7 +224,6 @@ def import_player():
             puuid=puuid,
             summoner_name=display_name,
             summoner_id=summoner_id,
-            summoner_level=summoner_data.get('summonerLevel'),
             profile_icon_id=summoner_data.get('profileIconId'),
             current_rank=current_rank,
             region=current_app.config['RIOT_PLATFORM']
@@ -235,13 +234,13 @@ def import_player():
 
         current_app.logger.info(f"Player created: {player.summoner_name} (ID: {player.id})")
 
-        # Fetch matches (50 games)
-        match_fetcher = MatchFetcher(riot_client)
-        matches_fetched = match_fetcher.fetch_tournament_games_only(
-            team=None,  # No team for single player import
-            count_per_player=50,
-            specific_players=[player]
-        )
+        # Fetch tournament games for this player
+        from app.services.player_match_service import PlayerMatchService
+        player_match_service = PlayerMatchService(riot_client)
+        match_result = player_match_service.fetch_all_player_tournament_games(player)
+
+        matches_fetched = match_result.get('new_games', 0)
+        current_app.logger.info(f"Fetched {matches_fetched} new tournament games for {player.summoner_name}")
 
         # Calculate stats for this player
         stats_calculator = StatsCalculator()

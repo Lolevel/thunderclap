@@ -23,6 +23,9 @@ class PrimeLeagueScraper:
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
+        # Use Chromium binary (installed via apt-get) - works on ARM64 and AMD64
+        chrome_options.binary_location = "/usr/bin/chromium"
+
         self.driver = webdriver.Chrome(options=chrome_options)
 
     def scrape_team(self, url: str) -> Optional[Dict]:

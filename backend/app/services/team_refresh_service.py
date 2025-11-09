@@ -159,6 +159,7 @@ class TeamRefreshService:
                     match_data = riot_client.get_match(match_id)
                     if match_data:
                         match_fetcher._store_match(match_data)
+                        db.session.commit()  # Commit immediately to avoid rollback issues
                         logger.info(f"  Fetched match {idx}/{len(missing_match_ids)}: {match_id}")
 
                         # Update progress incrementally
@@ -170,6 +171,8 @@ class TeamRefreshService:
                     break  # Success, exit retry loop
 
                 except Exception as e:
+                    # Rollback session on ANY error to prevent cascading failures
+                    db.session.rollback()
                     error_msg = str(e)
 
                     # Check if it's a 429 (rate limit) error
@@ -177,6 +180,15 @@ class TeamRefreshService:
                         retry_count += 1
                         wait_time = 60 * retry_count  # 60s, 120s, 180s
                         logger.warning(f"  Rate limited on match {match_id}. Waiting {wait_time}s (attempt {retry_count}/{max_retries})")
+
+                        # Update status to show we're waiting for rate limit
+                        current_progress = 30 + int((idx / len(missing_match_ids)) * 30)
+                        TeamRefreshService._update_progress(
+                            team_id,
+                            f'rate_limited_waiting_{wait_time}s',  # Phase shows wait time
+                            current_progress
+                        )
+
                         time.sleep(wait_time)
                     else:
                         # Other error, log and skip

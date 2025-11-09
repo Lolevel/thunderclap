@@ -12,6 +12,20 @@ const PHASE_LABELS = {
   'player_details': 'Spieler-Details laden'
 };
 
+// Helper to extract wait time from phase like "rate_limited_waiting_60s"
+const getPhaseLabel = (phase) => {
+  if (!phase) return 'Lädt...';
+
+  // Check for rate limit waiting phase
+  const rateLimitMatch = phase.match(/rate_limited_waiting_(\d+)s/);
+  if (rateLimitMatch) {
+    const waitTime = rateLimitMatch[1];
+    return `⏳ Warte auf API Rate Limit (${waitTime}s)`;
+  }
+
+  return PHASE_LABELS[phase] || phase;
+};
+
 export default function TeamRefreshIndicator({ teamId, onRefreshComplete }) {
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [visible, setVisible] = useState(false);
@@ -136,7 +150,7 @@ export default function TeamRefreshIndicator({ teamId, onRefreshComplete }) {
         {status === 'running' && (
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm text-gray-300">
-              {PHASE_LABELS[phase] || phase || 'Lädt...'}
+              {getPhaseLabel(phase)}
             </span>
             <span className="text-xs text-gray-500">
               {progress_percent}%
