@@ -13,7 +13,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 
 	// Use preloaded data if available, otherwise use SWR result
 	const draftData = preloadedData?.draftAnalysis || draftDataSWR;
-	const playerPools = preloadedData?.championPools?.players || playerPoolsSWR;
+	const playerPools = preloadedData?.championPools ? { players: preloadedData.championPools.players } : playerPoolsSWR;
 
 	const [activeView, setActiveView] = useState('team'); // 'team' or 'players'
 	const [playerViewMode, setPlayerViewMode] = useState('comparison'); // 'overview' or 'comparison'
