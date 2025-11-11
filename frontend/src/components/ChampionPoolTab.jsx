@@ -326,7 +326,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                                         <img
                                           src={champ.champion_icon}
                                           alt={champ.champion}
-                                          className="w-full h-full object-cover scale-115"
+                                          className="w-full h-full object-cover scale-110"
                                           onError={(e) => {
                                             e.target.style.display = "none";
                                           }}
