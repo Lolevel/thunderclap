@@ -37,10 +37,9 @@ export function useTeamSocket(callbacks = {}, teamId = null) {
   useEffect(() => {
     console.log('[WebSocket] Connecting to:', WS_URL);
 
-    // Determine the correct socket.io path based on the API URL
-    // If API URL has a path (like /thunderclap), include it in the socket.io path
-    const apiPath = new URL(WS_URL.startsWith('http') ? WS_URL : `http://${WS_URL}`).pathname;
-    const socketPath = apiPath === '/' ? '/socket.io' : `${apiPath}/socket.io`;
+    // For reverse proxy setups, always use /socket.io as the path
+    // The proxy (Caddy) will handle the /thunderclap prefix
+    const socketPath = '/socket.io';
 
     console.log('[WebSocket] Socket.IO path:', socketPath);
 
