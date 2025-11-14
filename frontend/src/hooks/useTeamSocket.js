@@ -5,7 +5,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:5000';
+// Derive WebSocket URL from API URL (remove /api suffix if present)
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const WS_URL = API_URL.replace(/\/api$/, '');
+
+console.log('[WebSocket Config] API URL:', API_URL);
+console.log('[WebSocket Config] WS URL:', WS_URL);
 
 /**
  * Hook to connect to team events WebSocket
@@ -32,13 +37,23 @@ export function useTeamSocket(callbacks = {}, teamId = null) {
   useEffect(() => {
     console.log('[WebSocket] Connecting to:', WS_URL);
 
+    // Determine the correct socket.io path based on the API URL
+    // If API URL has a path (like /thunderclap), include it in the socket.io path
+    const apiPath = new URL(WS_URL.startsWith('http') ? WS_URL : `http://${WS_URL}`).pathname;
+    const socketPath = apiPath === '/' ? '/socket.io' : `${apiPath}/socket.io`;
+
+    console.log('[WebSocket] Socket.IO path:', socketPath);
+
     // Connect to WebSocket with /teams namespace
+    // Socket.IO automatically handles wss:// for https:// URLs
     const socket = io(`${WS_URL}/teams`, {
-      path: '/socket.io',
+      path: socketPath,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
+      // For production with reverse proxy
+      secure: WS_URL.startsWith('https'),
     });
 
     socketRef.current = socket;
