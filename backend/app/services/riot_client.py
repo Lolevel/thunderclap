@@ -3,10 +3,14 @@ Riot Games API Client with rate limiting
 """
 import requests
 import time
+import threading
 from collections import deque
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from flask import current_app
+
+# Thread-local storage for tracking which team is being refreshed
+_thread_local = threading.local()
 
 
 class RateLimiter:
@@ -108,7 +112,8 @@ class RiotAPIClient:
         Returns:
             JSON response or None on failure
         """
-        for attempt in range(max_retries):
+        attempt = 0
+        while attempt < max_retries:
             try:
                 # Wait if rate limit would be exceeded
                 self.rate_limiter.wait_if_needed()
@@ -122,10 +127,29 @@ class RiotAPIClient:
                     return response.json()
 
                 elif response.status_code == 429:
-                    # Rate limit exceeded (shouldn't happen with our rate limiter, but handle anyway)
+                    # Rate limit exceeded - wait and retry WITHOUT incrementing attempt counter
                     retry_after = int(response.headers.get('Retry-After', 1))
                     current_app.logger.warning(f'Rate limit hit (429), waiting {retry_after}s')
+
+                    # Notify team refresh service if we're in a refresh context
+                    if hasattr(_thread_local, 'refresh_team_id') and hasattr(_thread_local, 'refresh_phase'):
+                        try:
+                            from app.services.team_refresh_service import TeamRefreshService
+                            TeamRefreshService.set_rate_limited(_thread_local.refresh_team_id, retry_after)
+                        except Exception:
+                            pass  # Don't fail if notification fails
+
                     time.sleep(retry_after)
+
+                    # Clear rate limited status after waiting
+                    if hasattr(_thread_local, 'refresh_team_id') and hasattr(_thread_local, 'refresh_phase'):
+                        try:
+                            from app.services.team_refresh_service import TeamRefreshService
+                            TeamRefreshService.clear_rate_limited(_thread_local.refresh_team_id, _thread_local.refresh_phase)
+                        except Exception:
+                            pass
+
+                    # Don't increment attempt - rate limit is not a failure
                     continue
 
                 elif response.status_code == 404:
@@ -134,9 +158,10 @@ class RiotAPIClient:
                     return None
 
                 elif response.status_code >= 500:
-                    # Server error, retry
+                    # Server error, retry with exponential backoff
                     current_app.logger.warning(f'Server error ({response.status_code}), retrying...')
                     time.sleep(2 ** attempt)  # Exponential backoff
+                    attempt += 1
                     continue
 
                 else:
@@ -147,13 +172,15 @@ class RiotAPIClient:
             except requests.exceptions.Timeout:
                 current_app.logger.warning(f'Request timeout, retrying... (attempt {attempt + 1}/{max_retries})')
                 time.sleep(2 ** attempt)
+                attempt += 1
                 continue
 
             except requests.exceptions.RequestException as e:
                 current_app.logger.error(f'Request failed: {e}')
-                if attempt == max_retries - 1:
+                if attempt >= max_retries - 1:
                     return None
                 time.sleep(2 ** attempt)
+                attempt += 1
                 continue
 
         return None
@@ -174,6 +201,19 @@ class RiotAPIClient:
             Account data with PUUID or None
         """
         url = f'{self.region_url}/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}'
+        return self._make_request(url)
+
+    def get_account_by_puuid(self, puuid: str) -> Optional[Dict[str, Any]]:
+        """
+        Get account by PUUID
+
+        Args:
+            puuid: Player UUID
+
+        Returns:
+            Account data with gameName and tagLine or None
+        """
+        url = f'{self.region_url}/riot/account/v1/accounts/by-puuid/{puuid}'
         return self._make_request(url)
 
     # ============================================================

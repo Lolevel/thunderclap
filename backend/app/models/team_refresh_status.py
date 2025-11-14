@@ -13,6 +13,8 @@ class TeamRefreshStatus(db.Model):
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     error_message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationship
     team = db.relationship('Team', backref=db.backref('refresh_status', uselist=False, lazy=True))

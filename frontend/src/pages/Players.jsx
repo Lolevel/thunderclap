@@ -1,69 +1,33 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Search, Users as UsersIcon, Shield, ChevronDown } from 'lucide-react';
-import api from '../lib/api';
 import RoleIcon from '../components/RoleIcon';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 import { usePlayers } from '../hooks/api/usePlayer';
 import { useTeams } from '../hooks/api/useTeam';
-import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import TeamLogo from '../components/TeamLogo';
 
 const Players = () => {
-  const [enrichedPlayers, setEnrichedPlayers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('all');
   const [selectedRole, setSelectedRole] = useState('all');
   const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage] = useState(50); // Show 50 players per page
 
-  // Fetch data with SWR
-  const { players: playersData, isLoading: playersLoading, isValidating: playersValidating } = usePlayers();
+  // Fetch data with SWR - players now include teams!
+  const { players: playersData, total, pages, isLoading: playersLoading, isValidating: playersValidating } = usePlayers(currentPage, perPage);
   const { teams: teamsData, isLoading: teamsLoading } = useTeams();
 
   const loading = playersLoading || teamsLoading;
 
-  // Enrich players with team data
+  // Reset to page 1 when filters change
   useEffect(() => {
-    const enrichPlayersWithTeams = async () => {
-      if (!playersData || !teamsData) return;
+    setCurrentPage(1);
+  }, [searchTerm, selectedTeam, selectedRole]);
 
-      // Fetch rosters for all teams and map players to their teams
-      const playerTeamsMap = {};
-
-      for (const team of teamsData) {
-        try {
-          const rosterRes = await api.get(`/teams/${team.id}/roster`);
-          const roster = rosterRes.data.roster || [];
-
-          for (const entry of roster) {
-            if (!playerTeamsMap[entry.player.id]) {
-              playerTeamsMap[entry.player.id] = [];
-            }
-            playerTeamsMap[entry.player.id].push({
-              id: team.id,
-              name: team.name,
-              tag: team.tag,
-              role: entry.role
-            });
-          }
-        } catch (err) {
-          console.error(`Failed to fetch roster for team ${team.id}:`, err);
-        }
-      }
-
-      // Attach teams to players
-      const enriched = playersData.map(player => ({
-        ...player,
-        teams: playerTeamsMap[player.id] || []
-      }));
-
-      setEnrichedPlayers(enriched);
-    };
-
-    enrichPlayersWithTeams();
-  }, [playersData, teamsData]);
-
-  const filteredPlayers = enrichedPlayers.filter((player) => {
+  // Filter players (client-side filtering within the current page)
+  const filteredPlayers = playersData.filter((player) => {
     // Search filter
     const matchesSearch = player.summoner_name.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -154,9 +118,6 @@ const Players = () => {
 
   return (
     <div className="p-6">
-      {/* Background refresh indicator */}
-      <RefreshIndicator isValidating={playersValidating} />
-
       <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
         {/* Header */}
         <div>
@@ -343,6 +304,29 @@ const Players = () => {
                 </div>
               </Link>
             ))}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {!loading && filteredPlayers.length > 0 && pages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700/50 transition-colors"
+            >
+              Zurück
+            </button>
+            <span className="px-4 py-2 text-sm text-slate-400">
+              Seite {currentPage} von {pages} ({total} Spieler)
+            </span>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(pages, p + 1))}
+              disabled={currentPage === pages}
+              className="px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700/50 transition-colors"
+            >
+              Weiter
+            </button>
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@
 
 export const cacheKeys = {
   // Teams
-  teams: () => '/teams',
+  teams: () => '/teams?per_page=1000',  // Fetch all teams (no pagination)
   team: (teamId) => `/teams/${teamId}`,
   teamFullData: (teamId) => `/teams/${teamId}/full-data`,  // OPTIMIZED: All data in one request
   teamStats: (teamId) => `/teams/${teamId}/stats`,

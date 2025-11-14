@@ -2,20 +2,26 @@ import useSWR from 'swr';
 import { cacheKeys } from '../../lib/cacheKeys';
 
 /**
- * Fetch all players
- * @returns {object} { players, isLoading, isError, isValidating, refresh }
+ * Fetch players with pagination
+ * @param {number} page - Page number (default: 1)
+ * @param {number} perPage - Items per page (default: 20)
+ * @returns {object} { players, total, pages, page, perPage, isLoading, isError, isValidating, refresh }
  */
-export function usePlayers() {
+export function usePlayers(page = 1, perPage = 20) {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    '/players?per_page=1000', // Fetch all players (high limit to avoid pagination)
+    `/players?page=${page}&per_page=${perPage}`,
     {
       refreshInterval: 300000, // 5 minutes
+      revalidateOnFocus: false, // Don't refetch on tab focus
     }
   );
 
   return {
     players: data?.players || [],
     total: data?.total || 0,
+    pages: data?.pages || 0,
+    page: data?.page || page,
+    perPage: data?.per_page || perPage,
     isLoading,
     isError: error,
     isValidating,

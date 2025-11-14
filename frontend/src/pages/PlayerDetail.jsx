@@ -1,10 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { User, Trophy, TrendingUp, ArrowLeft, Trash2 } from 'lucide-react';
 import api from '../lib/api';
 import { usePlayer, usePlayerChampions } from '../hooks/api/usePlayer';
-import { useTeams, useTeamRoster } from '../hooks/api/useTeam';
-import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import { getChampionIconUrl } from '../utils/championHelper';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
 import RoleIcon from '../components/RoleIcon';
@@ -15,42 +13,15 @@ const PlayerDetail = () => {
   const navigate = useNavigate();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [playerTeams, setPlayerTeams] = useState([]);
 
-  // Fetch player data with SWR
+  // Fetch player data with SWR (player now includes teams!)
   const { player, isLoading: playerLoading, isValidating: playerValidating } = usePlayer(id);
   const { champions, isLoading: championsLoading } = usePlayerChampions(id, 'tournament', 20);
-  const { teams: allTeams, isLoading: teamsLoading } = useTeams();
 
-  const loading = playerLoading || championsLoading || teamsLoading;
+  const loading = playerLoading || championsLoading;
 
-  // Find teams this player belongs to
-  useEffect(() => {
-    const findPlayerTeams = async () => {
-      if (!allTeams || !id) return;
-
-      const teams = [];
-      for (const team of allTeams) {
-        try {
-          const rosterRes = await api.get(`/teams/${team.id}/roster`);
-          const roster = rosterRes.data.roster || [];
-          const isInTeam = roster.some(entry => entry.player.id === id);
-          if (isInTeam) {
-            const rosterEntry = roster.find(entry => entry.player.id === id);
-            teams.push({
-              ...team,
-              role: rosterEntry?.role
-            });
-          }
-        } catch (err) {
-          console.error(`Failed to fetch roster for team ${team.id}:`, err);
-        }
-      }
-      setPlayerTeams(teams);
-    };
-
-    findPlayerTeams();
-  }, [allTeams, id]);
+  // Player teams come directly from the API
+  const playerTeams = player?.teams || [];
 
   const handleDeletePlayer = async () => {
     setDeleting(true);
@@ -86,9 +57,6 @@ const PlayerDetail = () => {
 
   return (
     <div className="p-6">
-      {/* Background refresh indicator */}
-      <RefreshIndicator isValidating={playerValidating} />
-
       <div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
         {/* Back Button */}
         <Link to="/players" className="inline-flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors">

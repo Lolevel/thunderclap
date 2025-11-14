@@ -1,7 +1,6 @@
 import { Trophy, TrendingUp, Users, Target, AlertCircle, Clock, Shield, Swords } from 'lucide-react';
 import { useTeamOverview } from '../hooks/api/useTeam';
 import { useScoutingReport } from '../hooks/api/useTeam';
-import { RefreshIndicator } from './ui/RefreshIndicator';
 import { TeamOverviewSkeleton } from './ui/Skeleton';
 import { getChampionSplashUrl, handleSplashError } from '../utils/championHelper';
 
@@ -43,11 +42,7 @@ const TeamOverviewTab = ({ teamId, preloadedData }) => {
 	const { pl_stats, top_5_champions, average_rank, average_rank_info, peak_rank_info, lowest_rank_info, player_count } = overview || {};
 
 	return (
-		<>
-			{/* Background refresh indicator */}
-			<RefreshIndicator isValidating={isValidating} />
-
-			<div className="space-y-4 md:space-y-5">
+		<div className="space-y-4 md:space-y-5">
 			{/* Prime League Stats */}
 			{pl_stats && pl_stats.games > 0 ? (
 				<div className="card bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-indigo-500/10 border border-blue-500/20">
@@ -420,7 +415,6 @@ const TeamOverviewTab = ({ teamId, preloadedData }) => {
 			)}
 
 		</div>
-		</>
 	);
 };
 

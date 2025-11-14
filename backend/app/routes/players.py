@@ -3,7 +3,7 @@ Player routes
 """
 from flask import Blueprint, request, jsonify, current_app
 from app import db
-from app.models import Player, PlayerChampion
+from app.models import Player, PlayerChampion, Team, TeamRoster
 from app.services import RiotAPIClient, MatchFetcher, StatsCalculator
 from app.utils import parse_opgg_url
 from app.middleware.auth import require_auth
@@ -21,13 +21,21 @@ bp = Blueprint('players', __name__, url_prefix='/api/players')
 @bp.route('/<player_id>', methods=['GET'])
 def get_player(player_id):
     """
-    Get player details
+    Get player details with team associations
 
     Returns:
         {
             "id": "uuid",
             "summoner_name": "PlayerName",
             "current_rank": "DIAMOND I",
+            "teams": [
+                {
+                    "id": "team-uuid",
+                    "name": "Team Name",
+                    "tag": "TAG",
+                    "role": "MIDDLE"
+                }
+            ],
             ...
         }
     """
@@ -35,7 +43,33 @@ def get_player(player_id):
     if not player:
         return jsonify({'error': 'Player not found'}), 404
 
-    return jsonify(player.to_dict()), 200
+    # Fetch team associations
+    roster_entries = db.session.query(
+        TeamRoster.role,
+        Team.id,
+        Team.name,
+        Team.tag,
+        Team.logo_url
+    ).join(Team, TeamRoster.team_id == Team.id).filter(
+        TeamRoster.player_id == player_id
+    ).all()
+
+    # Build teams list
+    teams = []
+    for role, team_id, team_name, team_tag, team_logo in roster_entries:
+        teams.append({
+            'id': str(team_id),
+            'name': team_name,
+            'tag': team_tag,
+            'logo_url': team_logo,
+            'role': role
+        })
+
+    # Add teams to player dict
+    player_dict = player.to_dict()
+    player_dict['teams'] = teams
+
+    return jsonify(player_dict), 200
 
 
 @bp.route('/<player_id>/champions', methods=['GET'])
@@ -87,27 +121,81 @@ def get_player_champions(player_id):
 @bp.route('/', methods=['GET'])
 def list_players():
     """
-    List all players
+    List all players with their team associations
 
     Query parameters:
         - page: Page number (default: 1)
-        - per_page: Items per page (default: 20)
+        - per_page: Items per page (default: 20, max: 100)
 
     Returns:
         {
-            "players": [...],
+            "players": [
+                {
+                    "id": "uuid",
+                    "summoner_name": "PlayerName",
+                    "teams": [
+                        {
+                            "id": "team-uuid",
+                            "name": "Team Name",
+                            "tag": "TAG",
+                            "role": "MIDDLE"
+                        }
+                    ],
+                    ...
+                }
+            ],
             "total": 42,
             "page": 1,
             "per_page": 20
         }
     """
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', current_app.config['ITEMS_PER_PAGE'], type=int)
+    per_page = min(request.args.get('per_page', 20, type=int), 100)  # Max 100 per page
 
-    pagination = Player.query.paginate(page=page, per_page=per_page, error_out=False)
+    # Query players with pagination
+    pagination = Player.query.order_by(Player.summoner_name).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+
+    # Get all player IDs in this page
+    player_ids = [p.id for p in pagination.items]
+
+    # Efficiently fetch all team associations for these players in one query
+    roster_entries = db.session.query(
+        TeamRoster.player_id,
+        TeamRoster.role,
+        Team.id,
+        Team.name,
+        Team.tag,
+        Team.logo_url
+    ).join(Team, TeamRoster.team_id == Team.id).filter(
+        TeamRoster.player_id.in_(player_ids)
+    ).all()
+
+    # Build player -> teams mapping
+    player_teams_map = {}
+    for player_id, role, team_id, team_name, team_tag, team_logo in roster_entries:
+        if player_id not in player_teams_map:
+            player_teams_map[player_id] = []
+        player_teams_map[player_id].append({
+            'id': str(team_id),
+            'name': team_name,
+            'tag': team_tag,
+            'logo_url': team_logo,
+            'role': role
+        })
+
+    # Attach teams to players
+    players_with_teams = []
+    for player in pagination.items:
+        player_dict = player.to_dict()
+        player_dict['teams'] = player_teams_map.get(player.id, [])
+        players_with_teams.append(player_dict)
 
     return jsonify({
-        'players': [player.to_dict() for player in pagination.items],
+        'players': players_with_teams,
         'total': pagination.total,
         'page': page,
         'per_page': per_page,

@@ -70,9 +70,9 @@ const Toast = ({ message, type = 'info', onClose, duration = 5000 }) => {
       <div className={`${style.icon} flex-shrink-0`}>
         {icons[type]}
       </div>
-      <p className={`flex-1 text-sm font-semibold ${style.text} leading-relaxed`}>
+      <div className={`flex-1 text-sm font-semibold ${style.text} leading-relaxed`}>
         {message}
-      </p>
+      </div>
       <button
         onClick={onClose}
         className={`

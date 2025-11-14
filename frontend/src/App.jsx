@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { SWRProvider } from './hooks/useSWRConfig';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { ImportProvider } from './contexts/ImportContext';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Teams from './pages/Teams';
@@ -16,8 +17,9 @@ function App() {
   return (
     <SWRProvider>
       <WebSocketProvider>
-        <ToastProvider>
-          <Router>
+        <ImportProvider>
+          <ToastProvider>
+            <Router>
             <Routes>
               {/* Public route */}
               <Route path="/login" element={<Login />} />
@@ -37,31 +39,32 @@ function App() {
             </Routes>
           </Router>
 
-          {/* React Hot Toast notifications */}
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                background: '#1a1d29',
-                color: '#e5e7eb',
-                border: '1px solid #374151',
-              },
-              success: {
-                iconTheme: {
-                  primary: '#10b981',
-                  secondary: '#1a1d29',
+            {/* React Hot Toast notifications */}
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 3000,
+                style: {
+                  background: '#1a1d29',
+                  color: '#e5e7eb',
+                  border: '1px solid #374151',
                 },
-              },
-              error: {
-                iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#1a1d29',
+                success: {
+                  iconTheme: {
+                    primary: '#10b981',
+                    secondary: '#1a1d29',
+                  },
                 },
-              },
-            }}
-          />
-        </ToastProvider>
+                error: {
+                  iconTheme: {
+                    primary: '#ef4444',
+                    secondary: '#1a1d29',
+                  },
+                },
+              }}
+            />
+          </ToastProvider>
+        </ImportProvider>
       </WebSocketProvider>
     </SWRProvider>
   );

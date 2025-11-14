@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback, useRef } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import {
 	Users,
 	TrendingUp,
@@ -23,24 +23,24 @@ import {
 	useDeleteTeam,
 	useRefreshTeamData,
 } from '../hooks/api/useTeamMutations';
-import { cacheKeys } from '../lib/cacheKeys';
-import { useTeamDataPrefetch } from '../hooks/useTeamDataPrefetch';
+import { cacheKeys, getTeamRelatedKeys } from '../lib/cacheKeys';
 import TeamOverviewTab from '../components/TeamOverviewTab';
 import ChampionPoolTab from '../components/ChampionPoolTab';
 import InDepthStatsTab from '../components/InDepthStatsTab';
 import PlayersTab from '../components/PlayersTab';
 import MatchHistoryTab from '../components/MatchHistoryTab';
 import GamePrepTab from '../components/GamePrepTab';
-import { RefreshIndicator } from '../components/ui/RefreshIndicator';
-import { PrefetchIndicator } from '../components/ui/PrefetchIndicator';
 import { useToast } from '../components/ToastContainer';
 import TeamLogo from '../components/TeamLogo';
 import { triggerTeamRefresh } from '../lib/api';
+import { useTeamSocket } from '../hooks/useTeamSocket';
+import { useImportTracking } from '../contexts/ImportContext';
 
 const TeamDetail = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const toast = useToast();
+	const { isImportingTeam, clearImportingTeam } = useImportTracking();
 
 	// OPTIMIZED: Fetch ALL team data in one request!
 	const {
@@ -70,8 +70,8 @@ const TeamDetail = () => {
 	// Fetch lineup predictions
 	const { prediction: predictions } = useLineupPrediction(id);
 
-	// Prefetch is now mostly handled by useTeamFullData, but keep for backwards compatibility
-	const prefetchStatus = useTeamDataPrefetch(id, !teamLoading && !teamError);
+	// REMOVED: useTeamDataPrefetch - redundant since useTeamFullData already fetches all data
+	// const prefetchStatus = useTeamDataPrefetch(id, !teamLoading && !teamError);
 
 	// Mutation hooks
 	const { addPlayer } = useAddPlayer(id);
@@ -87,6 +87,110 @@ const TeamDetail = () => {
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
 	const eventSourceRef = useRef(null);
+
+	// WebSocket integration for live refresh sync across all clients
+	useTeamSocket({
+		// Team Import events (for when someone else imports a team)
+		onTeamImportStarted: (data) => {
+			console.log('[TeamDetail] Team import started:', data);
+			toast.info(`${data.team_name} wird importiert...`, 3000);
+		},
+		onTeamImportCompleted: (data) => {
+			console.log('[TeamDetail] Team import completed:', data);
+
+			// Show clickable toast
+			toast.success(
+				<div
+					className="flex items-center gap-3 cursor-pointer"
+					onClick={() => navigate(`/teams/${data.team_id}`)}
+				>
+					<span className="text-sm">{data.message}</span>
+					<span className="text-cyan-400 text-xs">→ Zum Team</span>
+				</div>,
+				8000
+			);
+		},
+		onTeamImportFailed: (data) => {
+			console.error('[TeamDetail] Team import failed:', data);
+			toast.error(`Import fehlgeschlagen: ${data.error}`);
+		},
+		// Team Refresh events
+		onTeamRefreshStarted: (data) => {
+			if (data.team_id === id) {
+				console.log('[TeamDetail] Refresh started (WebSocket):', data);
+				setRefreshing(true);
+				setRefreshStatus({
+					status: 'running',
+					phase: 'collecting_matches',
+					progress_percent: 0,
+					is_rate_limited: false,
+				});
+			}
+		},
+		onTeamRefreshProgress: (data) => {
+			if (data.team_id === id) {
+				console.log('[TeamDetail] Refresh progress (WebSocket):', data);
+				setRefreshStatus({
+					status: data.status,
+					phase: data.phase,
+					progress_percent: data.progress_percent,
+					is_rate_limited: data.is_rate_limited || false,
+				});
+			}
+		},
+		onTeamRefreshCompleted: (data) => {
+			if (data.team_id === id) {
+				console.log('[TeamDetail] Refresh completed (WebSocket):', data);
+
+				// Close SSE if it's still open
+				if (eventSourceRef.current) {
+					eventSourceRef.current.close();
+					eventSourceRef.current = null;
+				}
+
+				setRefreshStatus({
+					status: 'completed',
+					phase: 'completed',
+					progress_percent: 100,
+					is_rate_limited: false,
+				});
+
+				// Invalidate all team-related caches and refetch
+				console.log('🔄 Invalidating caches and refetching fresh data...');
+				const keysToInvalidate = getTeamRelatedKeys(id);
+				keysToInvalidate.forEach(key => {
+					mutate(key);
+				});
+
+				toast.success('Teamdaten erfolgreich aktualisiert!');
+
+				setTimeout(() => {
+					setRefreshing(false);
+					setRefreshStatus({
+						status: 'idle',
+						phase: 'idle',
+						progress_percent: 0,
+						is_rate_limited: false,
+					});
+				}, 1500);
+			}
+		},
+		onTeamRefreshFailed: (data) => {
+			if (data.team_id === id) {
+				console.error('[TeamDetail] Refresh failed (WebSocket):', data);
+
+				// Close SSE if it's still open
+				if (eventSourceRef.current) {
+					eventSourceRef.current.close();
+					eventSourceRef.current = null;
+				}
+
+				setRefreshing(false);
+				setRefreshStatus(null);
+				toast.error(`Fehler: ${data.error}`, 5000);
+			}
+		},
+	}, id); // Pass team ID to join team-specific room
 
 	const handleAddPlayer = async (opggUrl) => {
 		await addPlayer(opggUrl);
@@ -138,7 +242,7 @@ const TeamDetail = () => {
 		const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 		const cleanBaseURL = baseURL.replace(/\/api\/?$/, '');
 		const accessToken = localStorage.getItem('access_token') || import.meta.env.VITE_ACCESS_TOKEN;
-		const eventSourceUrl = `${cleanBaseURL}/api/teams/${id}/refresh-stream?token=${accessToken}`;
+		const eventSourceUrl = `${cleanBaseURL}/api/teams/${id}/progress-stream?token=${accessToken}`;
 
 		console.log('🔌 Opening SSE connection to:', eventSourceUrl);
 		const eventSource = new EventSource(eventSourceUrl);
@@ -154,11 +258,18 @@ const TeamDetail = () => {
 				console.log('📊 Progress update:', data);
 
 				if (data.type === 'progress') {
-					setRefreshStatus({
-						status: 'running',
-						phase: data.data.step || 'processing',
-						progress_percent: data.data.progress_percent || 0,
-						is_rate_limited: false,
+					setRefreshStatus((prev) => {
+						const newProgress = data.data.progress_percent || 0;
+						// Never go backwards - keep max progress
+						const progressToShow = prev?.progress_percent ? Math.max(prev.progress_percent, newProgress) : newProgress;
+
+						return {
+							status: 'running',
+							phase: data.data.step || 'processing',
+							progress_percent: progressToShow,
+							is_rate_limited: data.data.is_rate_limited || false,
+							wait_seconds: data.data.wait_seconds || 0,
+						};
 					});
 				} else if (data.type === 'rate_limit') {
 					setRefreshStatus((prev) => ({
@@ -179,34 +290,61 @@ const TeamDetail = () => {
 					console.log('✅ Team data refresh completed!');
 					eventSource.close();
 					eventSourceRef.current = null;
-					setRefreshing(false);
-					setRefreshStatus(null);
 
-					// Refresh ALL data caches
-					Promise.all([refreshTeamData(), refreshFullData()])
-						.then(() => {
-							toast.success('✅ Team-Daten erfolgreich aktualisiert!', 4000);
-						})
-						.catch((error) => {
-							console.error('Failed to reload team data:', error);
-							toast.error('Fehler beim Neuladen der Daten', 5000);
+					// Show 100% completion briefly
+					setRefreshStatus({
+						status: 'completed',
+						phase: 'completed',
+						progress_percent: 100,
+						is_rate_limited: false,
+					});
+
+					// Invalidate all team-related caches and refetch
+					console.log('🔄 Invalidating caches and refetching fresh data...');
+					const keysToInvalidate = getTeamRelatedKeys(id);
+
+					// Invalidate all related caches
+					keysToInvalidate.forEach(key => {
+						mutate(key);
+					});
+
+					// Show success toast
+					toast.success('Teamdaten erfolgreich aktualisiert!');
+
+					// Reset refresh state after a brief delay
+					setTimeout(() => {
+						setRefreshing(false);
+						setRefreshStatus({
+							status: 'idle',
+							phase: 'idle',
+							progress_percent: 0,
+							is_rate_limited: false,
 						});
+					}, 1500);
 				} else if (data.type === 'background_complete') {
 					console.log('✅ Background tasks completed!');
 					eventSource.close();
 					eventSourceRef.current = null;
-					setRefreshing(false);
-					setRefreshStatus(null);
 
-					// Refresh caches again for background data
-					Promise.all([refreshTeamData(), refreshFullData()]);
+					// Show 100% completion briefly
+					setRefreshStatus({
+						status: 'completed',
+						phase: 'completed',
+						progress_percent: 100,
+						is_rate_limited: false,
+					});
+
+					// Reload immediately to show fresh data
+					console.log('🔄 Reloading page to fetch fresh data...');
+					window.location.reload();
 				} else if (data.type === 'error') {
-					console.error('❌ Refresh failed:', data.message);
+					const errorMsg = data.data?.message || data.message || 'Unbekannter Fehler';
+					console.error('❌ Refresh failed:', errorMsg);
 					eventSource.close();
 					eventSourceRef.current = null;
 					setRefreshing(false);
 					setRefreshStatus(null);
-					toast.error(`Fehler: ${data.message}`, 5000);
+					toast.error(`Fehler: ${errorMsg}`, 5000);
 				}
 			} catch (err) {
 				console.error('Failed to parse SSE data:', err);
@@ -214,12 +352,21 @@ const TeamDetail = () => {
 		};
 
 		eventSource.onerror = (err) => {
-			console.error('❌ SSE error:', err);
-			eventSource.close();
-			eventSourceRef.current = null;
-			setRefreshing(false);
-			setRefreshStatus(null);
-			toast.error('Verbindungsfehler beim Daten-Refresh', 5000);
+			console.error('❌ SSE connection error:', err);
+
+			// Check if the connection is in CLOSED state (not just reconnecting)
+			if (eventSource.readyState === EventSource.CLOSED) {
+				console.error('SSE connection permanently closed, starting polling fallback');
+				eventSource.close();
+				eventSourceRef.current = null;
+
+				// DON'T set refreshing to false - let polling fallback take over
+				// Just indicate that we're now polling
+				console.log('📡 Switching to REST API polling fallback...');
+			} else {
+				// Connection is just reconnecting, don't close it
+				console.log('SSE connection reconnecting...');
+			}
 		};
 
 		return () => {
@@ -231,17 +378,101 @@ const TeamDetail = () => {
 		};
 	}, [refreshing, id]);
 
+	// Polling fallback: If SSE is not connected but refresh is running, poll status via REST API
+	useEffect(() => {
+		if (!refreshing || !id) return;
+
+		// Only start polling if SSE is NOT connected
+		if (eventSourceRef.current) return;
+
+		console.log('🔄 Starting REST API polling fallback (SSE not available)');
+
+		const pollInterval = setInterval(async () => {
+			try {
+				const { getTeamRefreshStatus } = await import('../lib/api');
+				const response = await getTeamRefreshStatus(id);
+				const status = response.data;
+
+				console.log('📊 Polled status:', status.status, status.phase, status.progress_percent + '%');
+
+				// Update UI with polled status
+				if (status.status === 'running') {
+					setRefreshStatus({
+						status: status.status,
+						phase: status.phase || 'processing',
+						progress_percent: status.progress_percent || 0,
+						is_rate_limited: status.phase?.startsWith('rate_limited_') || false,
+					});
+				} else if (status.status === 'completed') {
+					console.log('✅ Refresh completed (detected via polling)');
+
+					// Show 100% completion briefly
+					setRefreshStatus({
+						status: 'completed',
+						phase: 'completed',
+						progress_percent: 100,
+						is_rate_limited: false,
+					});
+
+					// Stop polling
+					clearInterval(pollInterval);
+
+					// Invalidate all team-related caches and refetch
+					console.log('🔄 Invalidating caches and refetching fresh data...');
+					const keysToInvalidate = getTeamRelatedKeys(id);
+
+					// Invalidate all related caches
+					keysToInvalidate.forEach(key => {
+						mutate(key);
+					});
+
+					// Show success toast
+					toast.success('Teamdaten erfolgreich aktualisiert!');
+
+					// Reset refresh state after a brief delay
+					setTimeout(() => {
+						setRefreshing(false);
+						setRefreshStatus({
+							status: 'idle',
+							phase: 'idle',
+							progress_percent: 0,
+							is_rate_limited: false,
+						});
+					}, 1500);
+				} else if (status.status === 'failed') {
+					console.error('❌ Refresh failed (detected via polling)');
+					setRefreshing(false);
+					setRefreshStatus(null);
+					clearInterval(pollInterval);
+					toast.error('Daten-Refresh fehlgeschlagen', 5000);
+				}
+			} catch (error) {
+				console.error('Failed to poll refresh status:', error);
+			}
+		}, 3000); // Poll every 3 seconds
+
+		return () => {
+			console.log('🧹 Stopping polling fallback');
+			clearInterval(pollInterval);
+		};
+	}, [refreshing, id]);
+
 	const handleRefreshData = async () => {
 		try {
 			console.log('🚀 Starting refresh...');
+
+			// Start SSE connection immediately
 			setRefreshing(true);
 			setRefreshStatus({
-				status: 'connecting',
-				phase: 'connecting',
+				status: 'starting',
+				phase: 'starting',
 				progress_percent: 0,
 				is_rate_limited: false,
 			});
+
+			// Trigger the refresh on the backend (this starts the background thread)
 			await triggerTeamRefresh(id);
+			console.log('✅ Refresh triggered, SSE will receive updates');
 		} catch (error) {
 			console.error('Failed to trigger refresh:', error);
 			toast.error('Fehler beim Starten des Refresh', 5000);
@@ -295,12 +526,6 @@ const TeamDetail = () => {
 
 	return (
 		<div className="p-3 sm:p-4 md:p-6">
-			{/* Background refresh indicator */}
-			<RefreshIndicator isValidating={rosterValidating} />
-
-			{/* Background prefetch indicator */}
-			<PrefetchIndicator prefetchStatus={prefetchStatus} />
-
 			<div className="max-w-7xl mx-auto space-y-4 md:space-y-8 animate-fade-in">
 				<Link
 					to="/teams"
@@ -311,8 +536,8 @@ const TeamDetail = () => {
 				</Link>
 
 				{/* Team Header */}
-				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 p-4 md:p-6">
-					<div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+				<div className="rounded-xl bg-slate-800/40 backdrop-blur border border-slate-700/50 p-4 md:p-6 transition-all duration-500 ease-in-out">
+					<div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6 transition-all duration-500 ease-in-out">
 						{/* Logo + Team Info */}
 						<div className="flex items-center gap-4 md:gap-6 flex-1">
 							<TeamLogo
@@ -321,52 +546,79 @@ const TeamDetail = () => {
 								size="md"
 								className="shadow-lg shadow-blue-500/20 w-16 h-16 md:w-20 md:h-20"
 							/>
-							<div className="flex-1 min-w-0">
-								<h1 className="text-xl md:text-3xl font-bold text-white mb-1 truncate">
-									{team.name}
-								</h1>
-								<p className="text-slate-400 text-sm md:text-lg truncate">{team.tag}</p>
+							<div className="flex-1 min-w-0 flex flex-col justify-center transition-all duration-500 ease-in-out">
+								{/* Name and Tag - Centered */}
+								<div className="flex flex-col justify-center flex-1">
+									<h1 className="text-xl md:text-3xl font-bold text-white mb-1 truncate">
+										{team.name}
+									</h1>
+									<p className="text-slate-400 text-sm md:text-lg truncate">{team.tag}</p>
+								</div>
 
-							{/* Progress Bar - Always reserve space to prevent layout shift */}
-							<div className="mt-2 md:mt-3 h-10 md:h-12">
-								{refreshing && refreshStatus && refreshStatus.status === 'running' ? (
-									<>
-										<div className="flex items-center gap-2 mb-1">
-											<span className="text-xs text-cyan-400 truncate">
-												{refreshStatus.is_rate_limited ? (
-													<span className="text-warning flex items-center gap-1">
-														⏳ Rate Limit - Warte {refreshStatus.wait_seconds}s...
-													</span>
-												) : (
-													<>
-														{refreshStatus.phase === 'collecting_matches' && 'Match-IDs sammeln'}
-														{refreshStatus.phase === 'filtering_matches' && 'Matches filtern'}
-														{refreshStatus.phase === 'fetching_matches' && 'Matches laden'}
-														{refreshStatus.phase === 'linking_data' && 'Daten verknüpfen'}
-														{refreshStatus.phase === 'calculating_stats' && 'Stats berechnen'}
-														{refreshStatus.phase === 'updating_ranks' && 'Ränge aktualisieren'}
-														{refreshStatus.phase === 'player_details' && 'Spieler-Details laden'}
-														{refreshStatus.phase === 'processing' && 'Verarbeite...'}
-													</>
-												)}
+								{/* Progress Bar - Below name/tag */}
+								{refreshing && refreshStatus && (refreshStatus.status === 'running' || refreshStatus.status === 'completed') && (
+									<div className="mt-3 md:mt-4 overflow-hidden transition-all duration-500 ease-in-out animate-slide-down">
+										<div className="flex items-center gap-2 mb-1.5">
+											{/* Phase Description */}
+											<span className={`text-xs font-medium truncate ${
+												refreshStatus.phase === 'completed'
+													? 'text-green-400'
+													: (refreshStatus.is_rate_limited || refreshStatus.phase?.startsWith('rate_limited_'))
+													? 'text-yellow-400'
+													: 'text-cyan-400'
+											}`}>
+												{(() => {
+													const phase = refreshStatus.phase || '';
+
+													// Completed
+													if (phase === 'completed') {
+														return '✅ Aktualisierung abgeschlossen!';
+													}
+
+													// Rate limit waiting (check both is_rate_limited flag and phase name)
+													if (refreshStatus.is_rate_limited || phase.startsWith('rate_limited_')) {
+														const waitTime = refreshStatus.wait_seconds ||
+															phase.match(/rate_limited_(\d+)s/)?.[1] || '?';
+														return `⏳ Riot API Rate Limit - Warte ${waitTime}s...`;
+													}
+
+													// Normal phases
+													switch (phase) {
+														case 'collecting_matches': return '📋 Match-IDs von Riot API sammeln';
+														case 'filtering_matches': return '🔍 Prüfe welche Matches neu sind';
+														case 'fetching_matches': return '📥 Lade neue Matches von Riot API';
+														case 'linking_data': return '🔗 Verknüpfe Spieler mit Matches';
+														case 'calculating_stats': return '📊 Berechne Team-Statistiken';
+														case 'updating_ranks': return '🏆 Aktualisiere Ränge & Summoner-Namen';
+														case 'player_details': return '👤 Lade individuelle Spieler-Details';
+														case 'connecting': return '🔌 Verbinde...';
+														case 'processing': return '⚙️ Verarbeite Daten...';
+														default: return `⚙️ ${phase}`;
+													}
+												})()}
 											</span>
-											<span className="text-xs text-slate-500 flex-shrink-0">
+
+											{/* Progress Percentage */}
+											<span className="text-xs text-slate-400 font-mono flex-shrink-0">
 												{refreshStatus.progress_percent}%
 											</span>
 										</div>
-										<div className="w-full bg-slate-700/50 rounded-full h-1.5 overflow-hidden">
+
+										{/* Progress Bar */}
+										<div className="w-full bg-slate-700/50 rounded-full h-2 overflow-hidden shadow-inner">
 											<div
-												className={`h-1.5 rounded-full transition-all duration-500 ease-out ${
-													refreshStatus.is_rate_limited
-														? 'bg-gradient-to-r from-yellow-500 to-orange-500'
-														: 'bg-gradient-to-r from-cyan-500 to-blue-500'
+												className={`h-2 rounded-full transition-all duration-500 ease-out ${
+													refreshStatus.phase === 'completed'
+														? 'bg-gradient-to-r from-green-500 via-emerald-500 to-green-600'
+														: (refreshStatus.is_rate_limited || refreshStatus.phase?.startsWith('rate_limited_'))
+														? 'bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 animate-pulse'
+														: 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600'
 												}`}
 												style={{ width: `${refreshStatus.progress_percent}%` }}
 											/>
 										</div>
-									</>
-								) : null}
-							</div>
+									</div>
+								)}
 							</div>
 						</div>
 

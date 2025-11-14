@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { X, AlertCircle, CheckCircle, Users, User } from 'lucide-react';
 import api from '../lib/api';
+import { useImportTracking } from '../contexts/ImportContext';
 
 const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
+  const { setImportingTeam, setImportingPlayer } = useImportTracking();
   const [importType, setImportType] = useState('team'); // 'team' or 'player'
   const [primeleagueUrl, setPrimeleagueUrl] = useState('');
   const [opggUrl, setOpggUrl] = useState('');
@@ -59,11 +61,22 @@ const ImportTeamModal = ({ isOpen, onClose, onSuccess }) => {
         response = await api.post('/teams/import', {
           primeleague_url: primeleagueUrl,
         });
+
+        // Mark this team as being imported by THIS client
+        if (response.data.team_id) {
+          console.log('[ImportTeamModal] Marking team as importing:', response.data.team_id);
+          setImportingTeam(response.data.team_id);
+        }
       } else {
         // Player import
         response = await api.post('/players/import', {
           opgg_url: opggUrl,
         });
+
+        // Mark this player as being imported by THIS client
+        if (response.data.player_id) {
+          setImportingPlayer(response.data.player_id);
+        }
       }
 
       setSuccess(true);

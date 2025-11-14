@@ -166,6 +166,7 @@ class CacheService:
             f"team_champions:{team_id}*",
             f"team_draft:{team_id}*",
             f"team_matches:{team_id}*",
+            f"team_full_data:{team_id}*",
             f"scouting_report:{team_id}*",
         ]
 

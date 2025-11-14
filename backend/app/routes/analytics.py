@@ -1724,7 +1724,7 @@ def get_team_refresh_status(team_id):
     """
     Get current refresh status for a team.
     Used by frontend to poll refresh progress.
-    
+
     Returns:
         {
             "team_id": "uuid",
@@ -1739,7 +1739,7 @@ def get_team_refresh_status(team_id):
     team = Team.query.get(team_id)
     if not team:
         return jsonify({"error": "Team not found"}), 404
-    
+
     try:
         from app.models import TeamRefreshStatus
         refresh_status = TeamRefreshStatus.get_status(team_id)
@@ -1747,6 +1747,176 @@ def get_team_refresh_status(team_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching refresh status: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@bp.route("/teams/<team_id>/progress-stream", methods=["GET"])
+def stream_team_refresh_progress(team_id):
+    """
+    Server-Sent Events (SSE) endpoint for streaming real-time refresh progress.
+    Frontend connects to this endpoint and receives progress updates.
+
+    Event types sent:
+        - 'progress': Regular progress update with phase and percentage
+        - 'complete': Refresh completed successfully
+        - 'error': Refresh failed with error message
+        - 'heartbeat': Keep-alive ping every 15 seconds
+
+    Returns:
+        SSE stream with real-time updates
+    """
+    from flask import Response, stream_with_context
+    import json
+    import time
+
+    team = Team.query.get(team_id)
+    if not team:
+        return jsonify({"error": "Team not found"}), 404
+
+    def generate():
+        from app.models import TeamRefreshStatus
+
+        last_progress = -1
+        last_phase = None
+        refresh_completed = False
+        heartbeat_counter = 0
+
+        current_app.logger.info(f"📡 SSE stream started for team {team_id}")
+
+        try:
+            while not refresh_completed:
+                try:
+                    # Get current status - FORCE FRESH READ from database
+                    # Expire all cached instances to prevent stale data
+                    db.session.expire_all()
+                    status = TeamRefreshStatus.get_status(team_id)
+                    current_progress = status.progress_percent or 0
+                    current_phase = status.phase or 'idle'
+                    current_status = status.status
+
+                    # Map phase to user-friendly message
+                    phase_messages = {
+                        'collecting_matches': 'Sammle Tournament Games...',
+                        'filtering_matches': 'Filtere bereits vorhandene Games...',
+                        'fetching_matches': 'Lade neue Games von Riot API...',
+                        'linking_data': 'Verknüpfe Games mit Spielern...',
+                        'calculating_stats': 'Berechne Team-Statistiken...',
+                        'updating_ranks': 'Aktualisiere Spieler-Ränge...',
+                        'player_details': 'Lade individuelle Spieler-Daten...',
+                        'completed': 'Abgeschlossen!'
+                    }
+
+                    # Check for rate limit - always send updates during rate limit
+                    is_rate_limited = current_phase and current_phase.startswith('rate_limited_')
+
+                    # Send progress event if:
+                    # 1. Status changed (normal case), OR
+                    # 2. Currently rate limited (send every iteration to keep showing wait status), OR
+                    # 3. Every 2 seconds to ensure frontend always gets updates (prevents "stuck" UI)
+                    send_progress_update = (
+                        (current_progress != last_progress or current_phase != last_phase) or
+                        is_rate_limited or
+                        heartbeat_counter % 2 == 0  # Every 2 seconds (since we poll every 1s)
+                    )
+
+                    if send_progress_update:
+                        last_progress = current_progress
+                        last_phase = current_phase
+
+                        if is_rate_limited:
+                            # Extract wait time from phase like "rate_limited_52s"
+                            wait_time = current_phase.replace('rate_limited_', '').replace('s', '')
+                            message = f'⏳ Riot API Rate Limit - Warte {wait_time}s...'
+
+                            event_data = {
+                                'type': 'progress',
+                                'data': {
+                                    'step': current_phase,
+                                    'message': message,
+                                    'progress_percent': current_progress,
+                                    'is_rate_limited': True,
+                                    'wait_seconds': int(wait_time) if wait_time.isdigit() else 0
+                                }
+                            }
+                        else:
+                            message = phase_messages.get(current_phase, current_phase)
+
+                            event_data = {
+                                'type': 'progress',
+                                'data': {
+                                    'step': current_phase,
+                                    'message': message,
+                                    'progress_percent': current_progress
+                                }
+                            }
+
+                        yield f"data: {json.dumps(event_data)}\n\n"
+
+                    # Check if refresh completed
+                    if current_status == 'completed':
+                        current_app.logger.info(f"✅ SSE: Team refresh completed for {team_id}")
+
+                        # Always send a final 100% progress update before complete event
+                        final_progress = {
+                            'type': 'progress',
+                            'data': {
+                                'step': 'completed',
+                                'message': 'Abgeschlossen!',
+                                'progress_percent': 100
+                            }
+                        }
+                        yield f"data: {json.dumps(final_progress)}\n\n"
+
+                        # Send complete event MULTIPLE TIMES for robustness
+                        # (in case of brief connection issues)
+                        complete_event = {'type': 'complete', 'data': {'message': 'Daten erfolgreich aktualisiert!'}}
+                        for i in range(3):
+                            current_app.logger.info(f"📤 Sending complete event {i+1}/3")
+                            yield f"data: {json.dumps(complete_event)}\n\n"
+                            if i < 2:  # Don't sleep after last one
+                                time.sleep(1)
+
+                        refresh_completed = True
+                        break
+
+                    # Check if refresh failed
+                    elif current_status == 'failed':
+                        error_msg = status.error_message or 'Unbekannter Fehler'
+                        current_app.logger.error(f"❌ SSE: Team refresh failed for {team_id}: {error_msg}")
+                        yield f"data: {json.dumps({'type': 'error', 'data': {'message': error_msg}})}\n\n"
+                        refresh_completed = True
+                        break
+
+                    # Send heartbeat every 10 seconds to keep connection alive
+                    heartbeat_counter += 1
+                    if heartbeat_counter >= 10:  # 10 iterations * 1 second = 10 seconds
+                        current_app.logger.debug(f"💓 SSE heartbeat for team {team_id} (status: {current_status}, phase: {current_phase}, progress: {current_progress}%)")
+                        yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                        heartbeat_counter = 0
+
+                except Exception as e:
+                    current_app.logger.error(f"Error in SSE stream: {str(e)}")
+                    yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'Stream error: {str(e)}'}})}\n\n"
+                    break
+
+                # Poll every 1 second
+                time.sleep(1)
+
+        except GeneratorExit:
+            current_app.logger.info(f"🔌 SSE stream closed by client for team {team_id}")
+        except Exception as e:
+            current_app.logger.error(f"❌ SSE stream error for team {team_id}: {str(e)}")
+
+        current_app.logger.info(f"📡 SSE stream ended for team {team_id}")
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # Disable nginx buffering
+            'Connection': 'keep-alive'
+        }
+    )
 
 
 @bp.route("/admin/trigger-nightly-refresh", methods=["POST"])

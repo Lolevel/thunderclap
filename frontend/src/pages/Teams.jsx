@@ -1,14 +1,58 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Users, ChevronRight, Search, AlertCircle } from 'lucide-react';
+import { useSWRConfig } from 'swr';
 import { useTeams } from '../hooks/api/useTeam';
-import { RefreshIndicator } from '../components/ui/RefreshIndicator';
+import { useTeamSocket } from '../hooks/useTeamSocket';
+import { useToast } from '../components/ToastContainer';
+import { cacheKeys } from '../lib/cacheKeys';
+import { useImportTracking } from '../contexts/ImportContext';
 import TeamLogo from '../components/TeamLogo';
 
 const Teams = () => {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { mutate: globalMutate } = useSWRConfig();
+  const { isImportingTeam, clearImportingTeam } = useImportTracking();
+
   // Use SWR hook for data fetching
-  const { teams, isLoading, isError, isValidating } = useTeams();
+  const { teams, isLoading, isError, isValidating, refresh } = useTeams();
   const [searchTerm, setSearchTerm] = useState("");
+
+  // WebSocket integration for live updates
+  useTeamSocket({
+    onTeamImportStarted: (data) => {
+      console.log('[Teams] Team import started:', data);
+      toast.info(`${data.team_name} wird importiert...`);
+    },
+    onTeamImportProgress: (data) => {
+      console.log('[Teams] Team import progress:', data);
+    },
+    onTeamImportCompleted: (data) => {
+      console.log('[Teams] Team import completed:', data);
+      console.log('[Teams] Invalidating teams cache globally');
+
+      // Show clickable toast
+      toast.success(
+        <div
+          className="flex items-center gap-3 cursor-pointer"
+          onClick={() => navigate(`/teams/${data.team_id}`)}
+        >
+          <span className="text-sm">{data.message}</span>
+          <span className="text-cyan-400 text-xs">→ Zum Team</span>
+        </div>,
+        8000
+      );
+
+      // Globally invalidate teams cache to trigger refetch in ALL components
+      console.log('[Teams] Calling globalMutate for:', cacheKeys.teams());
+      globalMutate(cacheKeys.teams());
+    },
+    onTeamImportFailed: (data) => {
+      console.error('[Teams] Team import failed:', data);
+      toast.error(`Import fehlgeschlagen: ${data.error}`);
+    },
+  });
 
   const filteredTeams = (teams || []).filter(
     (team) =>
@@ -39,9 +83,6 @@ const Teams = () => {
 
   return (
     <div className="p-6">
-      {/* Background refresh indicator */}
-      <RefreshIndicator isValidating={isValidating} />
-
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
@@ -142,10 +183,10 @@ const Teams = () => {
                 )}
 
                 {/* Content - Foreground */}
-                <div className="relative h-full flex flex-col justify-between p-6 z-10">
-                  {/* Team Tag - Large and prominent */}
-                  <div className="max-w-[45%]">
-                    <div className="text-4xl font-black text-white/90 mb-2 drop-shadow-2xl transition-colors duration-300">
+                <div className="relative h-full flex flex-col p-6 z-10">
+                  {/* Top section: Tag and Name - Always centered */}
+                  <div className="flex-1 flex flex-col justify-center max-w-[55%]">
+                    <div className="text-4xl font-black text-white/90 drop-shadow-2xl transition-colors duration-300 mb-2">
                       {team.tag || team.name.substring(0, 3).toUpperCase()}
                     </div>
                     <div className="text-sm font-bold text-white/80 drop-shadow-lg transition-colors duration-300 break-words">
@@ -153,7 +194,7 @@ const Teams = () => {
                     </div>
                   </div>
 
-                  {/* Average Rank - Bottom */}
+                  {/* Bottom section: Average Rank */}
                   {team.average_rank && (
                     <div className="flex items-center gap-2 bg-slate-900/40 backdrop-blur-md rounded-lg px-3 py-2 w-fit">
                       {team.average_rank_icon && (
@@ -168,6 +209,7 @@ const Teams = () => {
                       </span>
                     </div>
                   )}
+
                 </div>
               </Link>
             ))}

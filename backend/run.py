@@ -2,7 +2,7 @@
 Application entry point
 """
 import os
-from app import create_app, db
+from app import create_app, db, socketio
 from app.scheduler_config import init_scheduler
 
 # Get configuration from environment
@@ -37,8 +37,11 @@ def make_shell_context():
 
 
 if __name__ == '__main__':
-    app.run(
+    # Use socketio.run() instead of app.run() for WebSocket support
+    socketio.run(
+        app,
         host='0.0.0.0',
         port=5000,
-        debug=app.config['DEBUG']
+        debug=app.config['DEBUG'],
+        allow_unsafe_werkzeug=True  # Needed for development
     )

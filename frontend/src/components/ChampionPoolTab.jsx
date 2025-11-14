@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Target, Ban, TrendingUp, Award, Users, List, Columns, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { useDraftAnalysis, usePlayerChampionPools } from '../hooks/api/useTeam';
-import { RefreshIndicator } from './ui/RefreshIndicator';
 import { ChampionPoolSkeleton } from './ui/Skeleton';
 import { displayRole } from '../utils/roleMapping';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
@@ -62,10 +61,6 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 	} = draftData;
 
 	return (
-    <>
-      {/* Background refresh indicator */}
-      <RefreshIndicator isValidating={draftValidating || poolsValidating} />
-
       <div className="space-y-6">
         {/* Header Info */}
         <div className="card bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
@@ -1125,7 +1120,6 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
           </div>
         )}
       </div>
-    </>
   );
 };
 

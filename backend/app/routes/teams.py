@@ -7,6 +7,12 @@ from app import db
 from app.models import Team, TeamRoster, Player
 from app.services import RiotAPIClient, MatchFetcher
 from app.services.primeleague_scraper import scrape_primeleague_team
+from app.services.websocket_events import (
+    broadcast_team_import_started,
+    broadcast_team_import_progress,
+    broadcast_team_import_completed,
+    broadcast_team_import_failed
+)
 from app.utils import parse_opgg_url
 from app.middleware.auth import require_auth
 from datetime import datetime
@@ -73,14 +79,30 @@ def import_team():
         f"Importing team '{team_name}' ({team_tag}) with {len(summoner_names)} players: {summoner_names}"
     )
 
+    # Create temporary team_id for progress tracking (will be replaced with actual ID after DB commit)
+    temp_team_id = f"temp_{team_name.replace(' ', '_')}"
+
     try:
+        # Broadcast import started
+        broadcast_team_import_started(temp_team_id, team_name)
+
         # Initialize Riot API client
         riot_client = RiotAPIClient()
 
         # Fetch player data
         players = []
-        for riot_id in summoner_names:
+        total_players = len(summoner_names)
+        for idx, riot_id in enumerate(summoner_names):
             current_app.logger.info(f"Fetching data for {riot_id}")
+
+            # Broadcast progress
+            progress = int((idx / total_players) * 70)  # 0-70% for player fetching
+            broadcast_team_import_progress(
+                temp_team_id,
+                progress,
+                f'Lade Spieler {idx + 1}/{total_players}: {riot_id}',
+                phase='fetching_players'
+            )
 
             # Parse Riot ID (gameName#tagLine)
             if "#" in riot_id:
@@ -196,6 +218,14 @@ def import_team():
         # Commit players first to get their IDs
         db.session.commit()
 
+        # Broadcast progress: Creating team
+        broadcast_team_import_progress(
+            temp_team_id,
+            75,
+            'Erstelle Team...',
+            phase='creating_team'
+        )
+
         # Create or update team
         if not team_name:
             team_name = f"Team {summoner_names[0]}"  # Default name
@@ -208,6 +238,14 @@ def import_team():
         )
         db.session.add(team)
         db.session.commit()
+
+        # Broadcast progress: Creating roster
+        broadcast_team_import_progress(
+            temp_team_id,
+            90,
+            'Erstelle Roster...',
+            phase='creating_roster'
+        )
 
         # Create roster entries
         for player in players:
@@ -225,6 +263,9 @@ def import_team():
             f"Team imported successfully: {team.name} with {len(players)} players"
         )
 
+        # Broadcast completion - use actual team ID now
+        broadcast_team_import_completed(str(team.id), team.name)
+
         return (
             jsonify(
                 {
@@ -240,6 +281,8 @@ def import_team():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error importing team: {str(e)}")
+        # Broadcast failure
+        broadcast_team_import_failed(temp_team_id, team_name, str(e))
         return jsonify({"error": "Failed to import team", "details": str(e)}), 500
 
 
@@ -449,15 +492,36 @@ def list_teams():
     )
 
     # Eager load rosters and players to avoid N+1 queries
-    from app.models import TeamRoster
+    from app.models import TeamRoster, TeamRefreshStatus
     pagination = Team.query.options(
         db.joinedload(Team.rosters).joinedload(TeamRoster.player)
     ).paginate(page=page, per_page=per_page, error_out=False)
 
+    # Get refresh statuses for all teams in one query
+    team_ids = [team.id for team in pagination.items]
+    refresh_statuses = TeamRefreshStatus.query.filter(
+        TeamRefreshStatus.team_id.in_(team_ids)
+    ).all()
+    status_map = {str(status.team_id): {
+        'status': status.status,
+        'progress': status.progress_percent,
+        'phase': status.phase
+    } for status in refresh_statuses}
+
+    # Add refresh_status to each team dict
+    teams_data = []
+    for team in pagination.items:
+        team_dict = team.to_dict()
+        status_info = status_map.get(str(team.id), {'status': 'idle', 'progress': 0, 'phase': None})
+        team_dict['refresh_status'] = status_info['status']
+        team_dict['refresh_progress'] = status_info['progress']
+        team_dict['refresh_phase'] = status_info['phase']
+        teams_data.append(team_dict)
+
     return (
         jsonify(
             {
-                "teams": [team.to_dict() for team in pagination.items],
+                "teams": teams_data,
                 "total": pagination.total,
                 "page": page,
                 "per_page": per_page,

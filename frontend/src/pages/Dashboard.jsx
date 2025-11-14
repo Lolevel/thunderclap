@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import {
 	Users,
 	TrendingUp,
@@ -9,17 +9,55 @@ import {
 	Search,
 } from 'lucide-react';
 import { useTeams } from '../hooks/api/useTeam';
+import { useTeamSocket } from '../hooks/useTeamSocket';
+import { useToast } from '../components/ToastContainer';
 import { cacheKeys } from '../lib/cacheKeys';
+import { useImportTracking } from '../contexts/ImportContext';
 import ImportTeamModal from '../components/ImportTeamModal';
-import { RefreshIndicator } from '../components/ui/RefreshIndicator';
 import TeamLogo from '../components/TeamLogo';
 
 const Dashboard = () => {
 	const navigate = useNavigate();
+	const toast = useToast();
+	const { mutate: globalMutate } = useSWRConfig();
+	const { isImportingTeam, clearImportingTeam } = useImportTracking();
 	const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
 	// Fetch teams with SWR
-	const { teams: allTeams, isLoading: teamsLoading, isValidating: teamsValidating } = useTeams();
+	const { teams: allTeams, isLoading: teamsLoading, isValidating: teamsValidating, refresh } = useTeams();
+
+	// WebSocket integration for live updates
+	useTeamSocket({
+		onTeamImportStarted: (data) => {
+			console.log('[Dashboard] Team import started:', data);
+			toast.info(`${data.team_name} wird importiert...`, 3000);
+		},
+		onTeamImportCompleted: (data) => {
+			console.log('[Dashboard] Team import completed:', data);
+			console.log('[Dashboard] Invalidating teams and dashboard stats cache globally');
+
+			// Show clickable toast
+			toast.success(
+				<div
+					className="flex items-center gap-3 cursor-pointer"
+					onClick={() => navigate(`/teams/${data.team_id}`)}
+				>
+					<span className="text-sm">{data.message}</span>
+					<span className="text-cyan-400 text-xs">→ Zum Team</span>
+				</div>,
+				8000
+			);
+
+			// Globally invalidate teams cache and dashboard stats to trigger refetch in ALL components
+			console.log('[Dashboard] Calling globalMutate for:', cacheKeys.teams());
+			globalMutate(cacheKeys.teams());
+			globalMutate('/dashboard/stats');
+		},
+		onTeamImportFailed: (data) => {
+			console.error('[Dashboard] Team import failed:', data);
+			toast.error(`Import fehlgeschlagen: ${data.error}`);
+		},
+	});
 
 	// Fetch dashboard stats with SWR
 	const { data: dashboardStats, isLoading: statsLoading } = useSWR('/dashboard/stats');
@@ -55,9 +93,6 @@ const Dashboard = () => {
 
 	return (
 		<div className="p-6">
-			{/* Background refresh indicator */}
-			<RefreshIndicator isValidating={teamsValidating} />
-
 			<div className="max-w-7xl mx-auto space-y-8 animate-fade-in">
 				<ImportTeamModal
 					isOpen={isImportModalOpen}

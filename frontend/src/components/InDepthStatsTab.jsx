@@ -1,6 +1,5 @@
 import { FileText, Clock, Swords, Shield, Target, TrendingUp, AlertCircle } from 'lucide-react';
 import { useScoutingReport } from '../hooks/api/useTeam';
-import { RefreshIndicator } from './ui/RefreshIndicator';
 import { StatsCardSkeleton } from './ui/Skeleton';
 
 const InDepthStatsTab = ({ teamId, preloadedData }) => {
@@ -68,11 +67,7 @@ const InDepthStatsTab = ({ teamId, preloadedData }) => {
 	}
 
 	return (
-		<>
-			{/* Background refresh indicator */}
-			<RefreshIndicator isValidating={isValidating} />
-
-			<div className="space-y-6">
+		<div className="space-y-6">
 			{/* Header */}
 			<div className="card bg-gradient-to-r from-accent/10 to-primary/10 border border-accent/20">
 				<div className="flex items-center gap-4">
@@ -295,7 +290,6 @@ const InDepthStatsTab = ({ teamId, preloadedData }) => {
 				</div>
 			</div>
 		</div>
-		</>
 	);
 };
 
