@@ -4,6 +4,24 @@ Handles real-time broadcasts for team imports and refreshes
 """
 from app import socketio
 from flask import current_app
+import threading
+import time
+
+
+def _emit_with_context(event, data, namespace='/teams'):
+    """
+    Helper to emit Socket.IO events from background threads.
+    Flask-SocketIO requires special handling for background thread emissions.
+    """
+    try:
+        # Emit the event
+        socketio.emit(event, data, namespace=namespace)
+        # Small sleep to ensure the event is processed
+        time.sleep(0.01)
+        return True
+    except Exception as e:
+        current_app.logger.error(f"[WebSocket] Failed to emit {event}: {e}")
+        return False
 
 
 def broadcast_team_import_started(team_id, team_name):
@@ -65,10 +83,11 @@ def broadcast_team_refresh_started(team_id):
     """Broadcast that a team refresh has started"""
     try:
         current_app.logger.info(f"[WebSocket] Broadcasting team_refresh_started for {team_id}")
-        socketio.emit('team_refresh_started', {
+        _emit_with_context('team_refresh_started', {
             'team_id': str(team_id),
             'message': 'Daten werden aktualisiert...'
-        }, namespace='/teams')
+        })
+        current_app.logger.info(f"[WebSocket] team_refresh_started broadcast sent")
     except Exception as e:
         current_app.logger.error(f"[WebSocket] Failed to broadcast refresh start: {e}")
 
@@ -76,13 +95,13 @@ def broadcast_team_refresh_started(team_id):
 def broadcast_team_refresh_progress(team_id, status, phase, progress_percent, is_rate_limited=False):
     """Broadcast team refresh progress"""
     try:
-        socketio.emit('team_refresh_progress', {
+        _emit_with_context('team_refresh_progress', {
             'team_id': str(team_id),
             'status': status,
             'phase': phase,
             'progress_percent': progress_percent,
             'is_rate_limited': is_rate_limited
-        }, namespace='/teams')
+        })
     except Exception as e:
         current_app.logger.error(f"[WebSocket] Failed to broadcast refresh progress: {e}")
 
@@ -91,10 +110,11 @@ def broadcast_team_refresh_completed(team_id):
     """Broadcast that a team refresh has completed"""
     try:
         current_app.logger.info(f"[WebSocket] Broadcasting team_refresh_completed for {team_id}")
-        socketio.emit('team_refresh_completed', {
+        _emit_with_context('team_refresh_completed', {
             'team_id': str(team_id),
             'message': 'Daten erfolgreich aktualisiert!'
-        }, namespace='/teams')
+        })
+        current_app.logger.info(f"[WebSocket] team_refresh_completed broadcast sent")
     except Exception as e:
         current_app.logger.error(f"[WebSocket] Failed to broadcast refresh completion: {e}")
 
@@ -103,10 +123,10 @@ def broadcast_team_refresh_failed(team_id, error):
     """Broadcast that a team refresh has failed"""
     try:
         current_app.logger.error(f"[WebSocket] Broadcasting team_refresh_failed for {team_id}: {error}")
-        socketio.emit('team_refresh_failed', {
+        _emit_with_context('team_refresh_failed', {
             'team_id': str(team_id),
             'error': str(error),
             'message': 'Aktualisierung fehlgeschlagen'
-        }, namespace='/teams')
+        })
     except Exception as e:
         current_app.logger.error(f"[WebSocket] Failed to broadcast refresh failure: {e}")
