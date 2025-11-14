@@ -9,15 +9,16 @@ import { io } from 'socket.io-client';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const WS_URL = API_URL.replace(/\/api$/, '');
 
-console.log('[WebSocket Config] API URL:', API_URL);
-console.log('[WebSocket Config] WS URL:', WS_URL);
+// Extract base URL and path for Socket.IO
+// Socket.IO separates the base URL from the path
+// Example: https://api.lolevel.de/thunderclap -> base: https://api.lolevel.de, path: /thunderclap/socket.io
+const urlObj = new URL(WS_URL.startsWith('http') ? WS_URL : `http://${WS_URL}`);
+const WS_BASE = `${urlObj.protocol}//${urlObj.host}`;
+const WS_PATH = urlObj.pathname === '/' ? '/socket.io' : `${urlObj.pathname}/socket.io`;
 
-// For production reverse proxy setup:
-// Frontend connects to: wss://api.lolevel.de/thunderclap/teams with path: /socket.io
-// Caddy forwards /thunderclap/* -> backend:5000/* (path stripping)
-// Backend receives: ws://backend:5000/socket.io (Flask-SocketIO default)
-console.log('[WebSocket Config] Connecting to:', WS_URL);
-console.log('[WebSocket Config] Socket.IO path: /socket.io (default)');
+console.log('[WebSocket Config] API URL:', API_URL);
+console.log('[WebSocket Config] WS Base:', WS_BASE);
+console.log('[WebSocket Config] WS Path:', WS_PATH);
 
 /**
  * Hook to connect to team events WebSocket
@@ -42,19 +43,20 @@ export function useTeamSocket(callbacks = {}, teamId = null) {
   }, [callbacks]);
 
   useEffect(() => {
-    console.log('[WebSocket] Connecting to:', WS_URL);
+    console.log('[WebSocket] Connecting to base:', WS_BASE);
+    console.log('[WebSocket] Using path:', WS_PATH);
+    console.log('[WebSocket] Namespace: /teams');
 
     // Connect to WebSocket with /teams namespace
     // Socket.IO automatically handles wss:// for https:// URLs
-    // Use default /socket.io path - Caddy will handle path stripping
-    const socket = io(`${WS_URL}/teams`, {
-      path: '/socket.io',
+    const socket = io(`${WS_BASE}/teams`, {
+      path: WS_PATH,
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       // For production with reverse proxy
-      secure: WS_URL.startsWith('https'),
+      secure: WS_BASE.startsWith('https'),
     });
 
     socketRef.current = socket;

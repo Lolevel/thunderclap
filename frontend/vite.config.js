@@ -12,6 +12,7 @@ export default defineConfig({
 			'localhost',
 			'127.0.0.1',
 			'thunderclap.lolevel.de',
+			'thunderclap.rocks',
 		],
 	},
 	preview: {
@@ -22,6 +23,7 @@ export default defineConfig({
 			'lolevel.de',
 			'localhost',
 			'127.0.0.1',
+			'thunderclap.rocks',
 		],
 	},
 });
