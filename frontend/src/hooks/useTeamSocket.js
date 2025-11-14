@@ -12,15 +12,12 @@ const WS_URL = API_URL.replace(/\/api$/, '');
 console.log('[WebSocket Config] API URL:', API_URL);
 console.log('[WebSocket Config] WS URL:', WS_URL);
 
-// Extract the base domain and path for Socket.IO
-// For https://api.lolevel.de/thunderclap/api -> https://api.lolevel.de
-// Path should be /thunderclap/socket.io
-const urlObj = new URL(WS_URL.startsWith('http') ? WS_URL : `http://${WS_URL}`);
-const WS_BASE = `${urlObj.protocol}//${urlObj.host}`;
-const WS_PATH = urlObj.pathname === '/' ? '/socket.io' : `${urlObj.pathname}/socket.io`;
-
-console.log('[WebSocket Config] WS Base:', WS_BASE);
-console.log('[WebSocket Config] WS Path:', WS_PATH);
+// For production reverse proxy setup:
+// Frontend connects to: wss://api.lolevel.de/thunderclap/teams with path: /socket.io
+// Caddy forwards /thunderclap/* -> backend:5000/* (path stripping)
+// Backend receives: ws://backend:5000/socket.io (Flask-SocketIO default)
+console.log('[WebSocket Config] Connecting to:', WS_URL);
+console.log('[WebSocket Config] Socket.IO path: /socket.io (default)');
 
 /**
  * Hook to connect to team events WebSocket
@@ -45,19 +42,19 @@ export function useTeamSocket(callbacks = {}, teamId = null) {
   }, [callbacks]);
 
   useEffect(() => {
-    console.log('[WebSocket] Connecting to:', WS_BASE);
-    console.log('[WebSocket] Using Socket.IO path:', WS_PATH);
+    console.log('[WebSocket] Connecting to:', WS_URL);
 
     // Connect to WebSocket with /teams namespace
     // Socket.IO automatically handles wss:// for https:// URLs
-    const socket = io(`${WS_BASE}/teams`, {
-      path: WS_PATH,
+    // Use default /socket.io path - Caddy will handle path stripping
+    const socket = io(`${WS_URL}/teams`, {
+      path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       // For production with reverse proxy
-      secure: WS_BASE.startsWith('https'),
+      secure: WS_URL.startsWith('https'),
     });
 
     socketRef.current = socket;
