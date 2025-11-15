@@ -5,6 +5,7 @@ flask-migrate==4.0.5
 flask-cors==4.0.0
 flask-socketio==5.3.6
 python-socketio==5.11.0
+eventlet==0.33.3
 
 # Database
 psycopg2-binary==2.9.9

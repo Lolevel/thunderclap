@@ -35,6 +35,17 @@ if [ "$FLASK_ENV" = "development" ]; then
   echo "🔧 Development mode: Using Flask dev server"
   exec python run.py
 else
-  echo "🚀 Production mode: Using Gunicorn"
-  exec gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 --access-logfile - --error-logfile - run:app
+  echo "🚀 Production mode: Using Gunicorn with eventlet for WebSocket support"
+  # Use eventlet worker for WebSocket support
+  # Increased timeout to 300s (5min) for long-running refresh operations
+  # Reduced workers to 2 to save memory
+  exec gunicorn --bind 0.0.0.0:5000 \
+    --workers 2 \
+    --worker-class eventlet \
+    --timeout 300 \
+    --graceful-timeout 30 \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info \
+    'run:app'
 fi
