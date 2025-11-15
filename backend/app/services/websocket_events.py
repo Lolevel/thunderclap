@@ -13,20 +13,16 @@ def _emit_with_context(event, data, namespace='/teams'):
     Helper to emit Socket.IO events from background threads.
     Flask-SocketIO requires special handling for background thread emissions.
     """
-    from app import app
     try:
-        # Use app context for background threads
-        with app.app_context():
-            app.logger.info(f"[WebSocket] Emitting {event} to namespace {namespace}: {data}")
-            socketio.emit(event, data, namespace=namespace)
-            # Small sleep to ensure the event is processed
-            time.sleep(0.01)
-            app.logger.info(f"[WebSocket] Successfully emitted {event}")
-            return True
+        current_app.logger.info(f"[WebSocket] Emitting {event} to namespace {namespace}: {data}")
+        socketio.emit(event, data, namespace=namespace)
+        # Small sleep to ensure the event is processed
+        time.sleep(0.01)
+        current_app.logger.info(f"[WebSocket] Successfully emitted {event}")
+        return True
     except Exception as e:
         try:
-            with app.app_context():
-                app.logger.error(f"[WebSocket] Failed to emit {event}: {e}")
+            current_app.logger.error(f"[WebSocket] Failed to emit {event}: {e}")
         except:
             print(f"[WebSocket] Failed to emit {event}: {e}")
         return False
@@ -34,63 +30,55 @@ def _emit_with_context(event, data, namespace='/teams'):
 
 def broadcast_team_import_started(team_id, team_name):
     """Broadcast that a team import has started"""
-    from app import app
     try:
-        with app.app_context():
-            app.logger.info(f"[WebSocket] Broadcasting team_import_started for {team_id}")
-            socketio.emit('team_import_started', {
-                'team_id': str(team_id),
-                'team_name': team_name,
-                'message': f'Team "{team_name}" wird importiert...'
-            }, namespace='/teams')
-            app.logger.info(f"[WebSocket] Broadcast sent successfully")
+        current_app.logger.info(f"[WebSocket] Broadcasting team_import_started for {team_id}")
+        socketio.emit('team_import_started', {
+            'team_id': str(team_id),
+            'team_name': team_name,
+            'message': f'Team "{team_name}" wird importiert...'
+        }, namespace='/teams')
+        current_app.logger.info(f"[WebSocket] Broadcast sent successfully")
     except Exception as e:
         print(f"[WebSocket] Failed to broadcast: {e}")
 
 
 def broadcast_team_import_progress(team_id, progress, message, phase=None):
     """Broadcast team import progress"""
-    from app import app
     try:
-        with app.app_context():
-            socketio.emit('team_import_progress', {
-                'team_id': str(team_id),
-                'progress': progress,
-                'phase': phase,
-                'message': message
-            }, namespace='/teams')
+        socketio.emit('team_import_progress', {
+            'team_id': str(team_id),
+            'progress': progress,
+            'phase': phase,
+            'message': message
+        }, namespace='/teams')
     except Exception as e:
         print(f"[WebSocket] Failed to broadcast progress: {e}")
 
 
 def broadcast_team_import_completed(team_id, team_name):
     """Broadcast that a team import has completed"""
-    from app import app
     try:
-        with app.app_context():
-            app.logger.info(f"[WebSocket] Broadcasting team_import_completed for {team_id}")
-            socketio.emit('team_import_completed', {
-                'team_id': str(team_id),
-                'team_name': team_name,
-                'message': f'Team "{team_name}" erfolgreich importiert!'
-            }, namespace='/teams')
-            app.logger.info(f"[WebSocket] Broadcast completed successfully")
+        current_app.logger.info(f"[WebSocket] Broadcasting team_import_completed for {team_id}")
+        socketio.emit('team_import_completed', {
+            'team_id': str(team_id),
+            'team_name': team_name,
+            'message': f'Team "{team_name}" erfolgreich importiert!'
+        }, namespace='/teams')
+        current_app.logger.info(f"[WebSocket] Broadcast completed successfully")
     except Exception as e:
         print(f"[WebSocket] Failed to broadcast completion: {e}")
 
 
 def broadcast_team_import_failed(team_id, team_name, error):
     """Broadcast that a team import has failed"""
-    from app import app
     try:
-        with app.app_context():
-            app.logger.error(f"[WebSocket] Broadcasting team_import_failed for {team_id}: {error}")
-            socketio.emit('team_import_failed', {
-                'team_id': str(team_id),
-                'team_name': team_name,
-                'error': str(error),
-                'message': f'Import von "{team_name}" fehlgeschlagen'
-            }, namespace='/teams')
+        current_app.logger.error(f"[WebSocket] Broadcasting team_import_failed for {team_id}: {error}")
+        socketio.emit('team_import_failed', {
+            'team_id': str(team_id),
+            'team_name': team_name,
+            'error': str(error),
+            'message': f'Import von "{team_name}" fehlgeschlagen'
+        }, namespace='/teams')
     except Exception as e:
         print(f"[WebSocket] Failed to broadcast failure: {e}")
 
