@@ -10,12 +10,11 @@ from app.middleware.auth import require_auth
 
 bp = Blueprint('players', __name__, url_prefix='/api/players')
 
-# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes
-# @bp.before_request
-# @require_auth
-# def before_request():
-#     pass
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route('/<player_id>', methods=['GET'])

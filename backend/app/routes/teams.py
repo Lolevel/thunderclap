@@ -19,13 +19,11 @@ from datetime import datetime
 
 bp = Blueprint("teams", __name__, url_prefix="/api/teams")
 
-# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes in this blueprint
-# TODO: Authentication temporarily disabled for development
-# @bp.before_request
-# @require_auth
-# def before_request():
-#     pass
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 
 @bp.route("/import", methods=["POST"])
@@ -738,8 +736,7 @@ def link_team_matches(team_id):
                         break
 
             # If at least 2 players from our team participated, link the match
-            # TODO: In production, this should be 5 (full team) or at least 3
-            if len(team_participants) >= 2:
+            if len(team_participants) >= 3:
                 if team_won:
                     match.winning_team_id = team.id
                     matches_linked += 1
