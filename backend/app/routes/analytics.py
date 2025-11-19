@@ -16,13 +16,11 @@ import urllib.parse
 
 bp = Blueprint("analytics", __name__, url_prefix="/api")
 
-# TODO: Authentication temporarily disabled for development
 # Apply authentication to all routes
-# @bp.before_request
-# @require_auth
-# def before_request():
-#     pass
-
+@bp.before_request
+@require_auth
+def before_request():
+    pass
 
 @bp.route("/teams/<team_id>/full-data", methods=["GET"])
 def get_team_full_data(team_id):
