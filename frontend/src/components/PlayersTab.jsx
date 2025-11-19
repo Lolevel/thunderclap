@@ -35,6 +35,7 @@ const PlayersTab = ({
 	const [syncing, setSyncing] = useState(false);
 	const [removingPlayer, setRemovingPlayer] = useState(false);
 	const [selectedPlayers, setSelectedPlayers] = useState([]);
+	const [showAllPredictions, setShowAllPredictions] = useState(false);
 
 	const sortedRoster = sortByRole(roster);
 
@@ -288,10 +289,19 @@ const PlayersTab = ({
 			{/* Lineup Predictions */}
 			{roster.length >= 5 && (
 				<div className="mt-8">
-					<h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
-						<Target className="w-5 h-5 text-accent" />
-						Predicted Starting Lineups
-					</h3>
+					<div className="flex items-center justify-between mb-4">
+						<h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+							<Target className="w-5 h-5 text-accent" />
+							Predicted Starting Lineups
+						</h3>
+						{predictions && predictions.length > 2 && (
+							<button
+								onClick={() => setShowAllPredictions(!showAllPredictions)}
+								className="btn btn-secondary text-xs md:text-sm px-2.5 md:px-4 py-1.5 md:py-2">
+								{showAllPredictions ? 'Weniger anzeigen' : `Alle ${predictions.length} anzeigen`}
+							</button>
+						)}
+					</div>
 
 					{!predictions ? (
 						<div className="card text-center py-8">
@@ -301,7 +311,7 @@ const PlayersTab = ({
 						</div>
 					) : predictions.length > 0 ? (
 						<div className="space-y-4">
-							{predictions.map((prediction, idx) => (
+							{(showAllPredictions ? predictions : predictions.slice(0, 2)).map((prediction, idx) => (
 								<div
 									key={idx}
 									className={`card ${

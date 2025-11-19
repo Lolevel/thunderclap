@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Users, TrendingUp } from 'lucide-react';
+import { useSidebarContext } from '../../contexts/SidebarContext';
 
 const Sidebar = () => {
   const location = useLocation();
+  const { contextContent } = useSidebarContext();
 
   const navItems = [
     { path: '/', icon: Home, label: 'Dashboard' },
@@ -20,8 +22,9 @@ const Sidebar = () => {
   return (
     <>
       {/* Desktop Sidebar - hidden on mobile */}
-      <aside className="hidden lg:block fixed left-0 top-16 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950/95 backdrop-blur-sm border-r border-slate-800/50 p-4 overflow-hidden">
-        <nav className="space-y-2">
+      <aside className="hidden lg:block fixed left-0 top-16 w-64 h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950/95 backdrop-blur-sm border-r border-slate-800/50 overflow-y-auto">
+        {/* Main Navigation */}
+        <nav className="p-4 space-y-2 border-b border-slate-800/50">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -44,6 +47,13 @@ const Sidebar = () => {
             );
           })}
         </nav>
+
+        {/* Context Area */}
+        {contextContent && (
+          <div className="p-4">
+            {contextContent}
+          </div>
+        )}
       </aside>
 
       {/* Mobile Bottom Navigation */}

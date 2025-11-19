@@ -24,31 +24,28 @@ CREATE TABLE teams (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Players table (UPDATED: Added soloq/flexq columns)
+-- Players table (UPDATED: Separate Solo/Duo and Flex queue rankings)
 CREATE TABLE players (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     summoner_name VARCHAR(100) NOT NULL,
     summoner_id VARCHAR(100) UNIQUE,
     puuid VARCHAR(100) UNIQUE NOT NULL,
     profile_icon_id INTEGER,
-    current_rank VARCHAR(20),
-    current_lp INTEGER,
-    peak_rank VARCHAR(20),
-    
+
     -- Solo/Duo Queue rank
     soloq_tier VARCHAR(20),
     soloq_division VARCHAR(5),
     soloq_lp INTEGER DEFAULT 0,
     soloq_wins INTEGER DEFAULT 0,
     soloq_losses INTEGER DEFAULT 0,
-    
+
     -- Flex Queue rank
     flexq_tier VARCHAR(20),
     flexq_division VARCHAR(5),
     flexq_lp INTEGER DEFAULT 0,
     flexq_wins INTEGER DEFAULT 0,
     flexq_losses INTEGER DEFAULT 0,
-    
+
     rank_last_updated TIMESTAMP,
     region VARCHAR(10) DEFAULT 'EUW1',
     last_active TIMESTAMP,

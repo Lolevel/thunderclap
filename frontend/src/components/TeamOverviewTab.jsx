@@ -257,7 +257,7 @@ const TeamOverviewTab = ({ teamId, preloadedData }) => {
 
 						{/* Desktop: Podium layout */}
 						<div className="hidden md:block">
-							<div className="flex justify-center gap-3">
+							<div className="flex justify-center items-end gap-3">
 								{top_5_champions[1] && (
 									<div className="flex-1 max-w-[280px]">
 										<div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border border-slate-600/50 transition-all duration-300 group">

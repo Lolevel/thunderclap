@@ -492,10 +492,11 @@ def list_teams():
     )
 
     # Eager load rosters and players to avoid N+1 queries
+    # Sort by created_at DESC (newest first)
     from app.models import TeamRoster, TeamRefreshStatus
     pagination = Team.query.options(
         db.joinedload(Team.rosters).joinedload(TeamRoster.player)
-    ).paginate(page=page, per_page=per_page, error_out=False)
+    ).order_by(Team.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
     # Get refresh statuses for all teams in one query
     team_ids = [team.id for team in pagination.items]

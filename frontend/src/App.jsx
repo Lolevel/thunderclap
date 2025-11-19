@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { SWRProvider } from './hooks/useSWRConfig';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { ImportProvider } from './contexts/ImportContext';
+import { SidebarProvider } from './contexts/SidebarContext';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Teams from './pages/Teams';
@@ -18,8 +19,9 @@ function App() {
     <SWRProvider>
       <WebSocketProvider>
         <ImportProvider>
-          <ToastProvider>
-            <Router>
+          <SidebarProvider>
+            <ToastProvider>
+              <Router>
             <Routes>
               {/* Public route */}
               <Route path="/login" element={<Login />} />
@@ -63,7 +65,8 @@ function App() {
                 },
               }}
             />
-          </ToastProvider>
+            </ToastProvider>
+          </SidebarProvider>
         </ImportProvider>
       </WebSocketProvider>
     </SWRProvider>

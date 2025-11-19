@@ -328,11 +328,6 @@ def get_draft_analysis(team_id):
         if "error" in analysis:
             return jsonify(analysis), 200
 
-        # Get first pick priority
-        first_pick_priority = analyzer.get_first_pick_priority(team)
-
-        analysis['first_pick_priority'] = first_pick_priority
-
         # Enrich bans with champion data
         from app.utils.champion_helper import batch_enrich_champions
 

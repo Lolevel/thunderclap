@@ -100,21 +100,73 @@
     min-height: 100vh;
   }
 
+  /* Modern Scrollbar Styling - Chrome/Edge/Safari */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(71 85 105 / 0.6) transparent;
+  }
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
 
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   ::-webkit-scrollbar-track {
-    @apply bg-background;
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-track-piece {
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-surface-elevated rounded-lg;
+    background: rgb(71 85 105 / 0.6);
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-surface-hover;
+    background: rgb(100 116 139 / 0.8);
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: rgb(148 163 184 / 0.9);
+  }
+
+  /* Completely remove all scrollbar buttons/arrows */
+  ::-webkit-scrollbar-button {
+    width: 0px;
+    height: 0px;
+    display: block;
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-button:start:decrement,
+  ::-webkit-scrollbar-button:end:increment {
+    width: 0px;
+    height: 0px;
+    display: block;
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-button:vertical:start:increment,
+  ::-webkit-scrollbar-button:vertical:end:decrement,
+  ::-webkit-scrollbar-button:horizontal:start:increment,
+  ::-webkit-scrollbar-button:horizontal:end:decrement {
+    width: 0px;
+    height: 0px;
+    display: block;
+    background: transparent;
+  }
+
+  /* Ensure scrollbar doesn't overflow container */
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-auto {
+    scrollbar-gutter: stable;
   }
 }
 /* Global button cursor */  button {    @apply cursor-pointer;  }  button:disabled {    @apply cursor-not-allowed;  }

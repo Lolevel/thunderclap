@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Edit2, Trash2, ChevronRight, MessageSquare } from 'lucide-react';
+import { Plus, Edit2, Trash2, ChevronRight, MessageSquare, ChevronDown, ChevronUp, X } from 'lucide-react';
 import RosterManager from './GamePrep/RosterManager';
 import DraftBoard from './GamePrep/DraftBoard';
 import CommentSystem from './GamePrep/CommentSystem';
 import { useRosters, useScenarios, useComments } from '../hooks/useGamePrep';
 import { getChampionIcon } from '../lib/championsComplete';
 import RoleIcon from './RoleIcon';
+import { useSidebarContext } from '../contexts/SidebarContext';
 
 /**
  * Game Prep Tab - Improved Workflow
@@ -14,10 +15,15 @@ import RoleIcon from './RoleIcon';
  * 3. Select Scenario → Show Draft Board (with Scenario Comments)
  */
 export default function GamePrepTab({ teamId, team, roster, predictions }) {
+  // Sidebar Context
+  const { setContextContent } = useSidebarContext();
+
   // State
   const [currentRoster, setCurrentRoster] = useState(null);
   const [currentScenario, setCurrentScenario] = useState(null);
   const [editingScenarioName, setEditingScenarioName] = useState(null);
+  const [showGlobalComments, setShowGlobalComments] = useState(false);
+  const [showRosterComments, setShowRosterComments] = useState(false);
 
   // Ref for scrolling to comments
   const scenarioCommentsRef = useRef(null);
@@ -46,6 +52,53 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
   const { comments: globalComments, createComment: createGlobal, updateComment: updateGlobal, deleteComment: deleteGlobal } = useComments(teamId, 'global');
   const { comments: rosterComments, createComment: createRosterComment, updateComment: updateRosterComment, deleteComment: deleteRosterComment } = useComments(teamId, 'roster', currentRoster?.id);
   const { comments: scenarioComments, createComment: createScenarioComment, updateComment: updateScenarioComment, deleteComment: deleteScenarioComment } = useComments(teamId, 'scenario', null, currentScenario?.id);
+
+  // Set sidebar context content with TOC
+  useEffect(() => {
+    const handleScrollToSection = (sectionId) => {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+
+    const tocContent = (
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">
+          On This Page
+        </h3>
+        <nav className="space-y-1.5">
+          <button
+            onClick={() => handleScrollToSection('roster-section')}
+            className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+          >
+            Roster
+          </button>
+          {currentRoster && (
+            <button
+              onClick={() => handleScrollToSection('scenario-section')}
+              className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+            >
+              Scenarios
+            </button>
+          )}
+          {currentScenario && (
+            <button
+              onClick={() => handleScrollToSection('draft-section')}
+              className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+            >
+              Draft Board
+            </button>
+          )}
+        </nav>
+      </div>
+    );
+
+    setContextContent(tocContent);
+
+    // Cleanup on unmount
+    return () => setContextContent(null);
+  }, [setContextContent, currentRoster, currentScenario]);
 
   // Auto-select roster when data loads
   useEffect(() => {
@@ -131,10 +184,53 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
 
   return (
     <div className="space-y-6">
-      {/* Phase 1: Roster Management + Global Comments */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Roster Selection (2/3 width) */}
-        <div className="lg:col-span-2 card">
+      {/* Phase 1: Roster Management */}
+      <div id="roster-section" className="space-y-4 scroll-mt-20">
+        {/* Global Comments - Floating Icon */}
+        <div className="relative">
+          <button
+            onClick={() => setShowGlobalComments(!showGlobalComments)}
+            className="absolute left-0 top-0 z-10 flex items-center gap-1.5 px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-lg transition-all group"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+            {globalComments.length > 0 && (
+              <span className="text-xs font-medium text-purple-400">
+                {globalComments.length}
+              </span>
+            )}
+            <span className="text-xs text-purple-300 opacity-0 group-hover:opacity-100 transition-opacity max-w-0 group-hover:max-w-xs overflow-hidden whitespace-nowrap">
+              General Notes
+            </span>
+          </button>
+
+          {showGlobalComments && (
+            <div className="card animate-fadeIn mt-10">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-purple-400">General Notes & Strategy</h3>
+                <button
+                  onClick={() => setShowGlobalComments(false)}
+                  className="p-1 hover:bg-surface-hover rounded transition-colors"
+                >
+                  <X className="w-4 h-4 text-text-muted" />
+                </button>
+              </div>
+              <CommentSystem
+                globalComments={globalComments}
+                rosterComments={[]}
+                scenarioComments={[]}
+                currentRoster={null}
+                currentScenario={null}
+                onAddComment={handleAddComment}
+                onUpdateComment={handleUpdateComment}
+                onDeleteComment={handleDeleteComment}
+                showOnlyGlobal={true}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Roster Selection - Full Width */}
+        <div className="card">
           <RosterManager
             rosters={rosters}
             lockedRoster={lockedRoster}
@@ -156,36 +252,56 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
             currentRoster={currentRoster}
           />
         </div>
-
-        {/* Global Comments (1/3 width) */}
-        <div className="lg:col-span-1 relative">
-          {globalComments.length > 0 && (
-            <div className="absolute -top-2 -right-2 z-10 flex items-center gap-1 bg-purple-500 text-white text-xs px-2 py-1 rounded-full shadow-lg">
-              <MessageSquare className="w-3 h-3" />
-              {globalComments.length}
-            </div>
-          )}
-          <CommentSystem
-            globalComments={globalComments}
-            rosterComments={[]}
-            scenarioComments={[]}
-            currentRoster={null}
-            currentScenario={null}
-            onAddComment={handleAddComment}
-            onUpdateComment={handleUpdateComment}
-            onDeleteComment={handleDeleteComment}
-            showOnlyGlobal={true}
-          />
-        </div>
       </div>
 
       {/* Phase 2 & 3: Scenarios + Draft (only if roster selected) */}
       {currentRoster && (
         <div className="space-y-6">
-          {/* Scenario Selection + Roster Comments */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Scenarios (2/3 width) */}
-            <div className="lg:col-span-2 card p-6">
+          {/* Roster Comments - Floating Icon */}
+          <div className="relative">
+            <button
+              onClick={() => setShowRosterComments(!showRosterComments)}
+              className="absolute left-0 top-0 z-10 flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg transition-all group"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-blue-400" />
+              {rosterComments.length > 0 && (
+                <span className="text-xs font-medium text-blue-400">
+                  {rosterComments.length}
+                </span>
+              )}
+              <span className="text-xs text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity max-w-0 group-hover:max-w-xs overflow-hidden whitespace-nowrap">
+                Roster Notes
+              </span>
+            </button>
+
+            {showRosterComments && (
+              <div className="card animate-fadeIn mt-10">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-blue-400">Roster Notes - {currentRoster.name}</h3>
+                  <button
+                    onClick={() => setShowRosterComments(false)}
+                    className="p-1 hover:bg-surface-hover rounded transition-colors"
+                  >
+                    <X className="w-4 h-4 text-text-muted" />
+                  </button>
+                </div>
+                <CommentSystem
+                  globalComments={[]}
+                  rosterComments={rosterComments}
+                  scenarioComments={[]}
+                  currentRoster={currentRoster}
+                  currentScenario={null}
+                  onAddComment={handleAddComment}
+                  onUpdateComment={handleUpdateComment}
+                  onDeleteComment={handleDeleteComment}
+                  showOnlyRoster={true}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Scenario Selection - Full Width */}
+          <div id="scenario-section" className="card p-6 scroll-mt-20">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-white">Phase 2: Draft Scenarios</h2>
@@ -390,44 +506,29 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
               )}
             </div>
 
-            {/* Roster Comments (1/3 width) */}
-            <div className="lg:col-span-1 relative">
-              {rosterComments.length > 0 && (
-                <div className="absolute -top-2 -right-2 z-10 flex items-center gap-1 bg-blue-500 text-white text-xs px-2 py-1 rounded-full shadow-lg">
-                  <MessageSquare className="w-3 h-3" />
-                  {rosterComments.length}
-                </div>
-              )}
-              <CommentSystem
-                globalComments={[]}
-                rosterComments={rosterComments}
-                scenarioComments={[]}
-                currentRoster={currentRoster}
-                currentScenario={null}
-                onAddComment={handleAddComment}
-                onUpdateComment={handleUpdateComment}
-                onDeleteComment={handleDeleteComment}
-                showOnlyRoster={true}
-              />
-            </div>
-          </div>
-
           {/* Phase 3: Draft Board + Scenario Comments (only if scenario selected) */}
           {currentScenario && (
             <div className="space-y-6">
-              {/* Draft Board (Full Width) */}
-              <div className="card relative">
-                {/* Prominent Comment Badge - Click to scroll */}
+              {/* Scenario Comments - Floating Icon (Left Side) */}
+              <div id="draft-section" className="relative scroll-mt-20">
                 {scenarioComments.length > 0 && (
                   <button
                     onClick={scrollToScenarioComments}
-                    className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg transition-colors"
+                    className="absolute left-0 top-0 z-20 flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-green-500/20 to-emerald-500/20 hover:from-green-500/30 hover:to-emerald-500/30 border-2 border-green-500/40 hover:border-green-500/60 rounded-lg shadow-lg shadow-green-500/20 transition-all duration-200 group"
                   >
-                    <MessageSquare className="w-4 h-4" />
-                    <span className="font-semibold">{scenarioComments.length} Comment{scenarioComments.length !== 1 ? 's' : ''}</span>
+                    <MessageSquare className="w-4 h-4 text-green-400" />
+                    <span className="text-sm font-semibold text-green-300">
+                      {scenarioComments.length}
+                    </span>
+                    <span className="text-xs text-green-300 opacity-0 group-hover:opacity-100 transition-opacity max-w-0 group-hover:max-w-xs overflow-hidden whitespace-nowrap">
+                      Draft Notes
+                    </span>
                   </button>
                 )}
-                <DraftBoard
+
+                {/* Draft Board (Full Width) */}
+                <div className="card">
+                  <DraftBoard
                   scenario={currentScenario}
                   lockedRoster={lockedRoster}
                   currentRoster={currentRoster}
@@ -439,6 +540,7 @@ export default function GamePrepTab({ teamId, team, roster, predictions }) {
                   }}
                   teamName={team?.name || 'Unknown Team'}
                 />
+                </div>
               </div>
 
               {/* Scenario Comments (Below Draft) */}

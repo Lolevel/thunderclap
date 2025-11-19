@@ -29,7 +29,6 @@ class DraftAnalyzer:
                 'team_champion_pool': [...],  # All champions with player info
                 'favorite_bans': {...},       # Ban priorities by rotation
                 'bans_against': {...},        # Bans opponents use against team
-                'first_pick_priority': [...], # Most picked on first pick
                 'side_performance': {...}     # Blue/red side stats
             }
         """
@@ -503,35 +502,6 @@ class DraftAnalyzer:
         }
 
         return result
-
-    def get_first_pick_priority(self, team: Team, limit: int = 3) -> List[Dict]:
-        """
-        Get team's first pick priorities
-
-        Args:
-            team: Team instance
-            limit: Top N champions
-
-        Returns:
-            List of first pick champions with stats
-        """
-        patterns = DraftPattern.query.filter_by(
-            team_id=team.id,
-            action_type='pick',
-            is_first_pick=True
-        ).order_by(DraftPattern.frequency.desc()).limit(limit).all()
-
-        return [
-            {
-                'champion': p.champion_name,
-                'champion_id': p.champion_id,
-                'frequency': p.frequency,
-                'winrate': float(p.winrate) if p.winrate else 0,
-                'player': p.player.summoner_name if p.player_id else None,
-                'player_id': str(p.player_id) if p.player_id else None
-            }
-            for p in patterns
-        ]
 
     def suggest_bans_against_team(
         self, opponent_team: Team, limit: int = 5

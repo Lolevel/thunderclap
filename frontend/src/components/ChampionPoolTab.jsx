@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Target, Ban, TrendingUp, Award, Users, List, Columns, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { useDraftAnalysis, usePlayerChampionPools } from '../hooks/api/useTeam';
 import { ChampionPoolSkeleton } from './ui/Skeleton';
 import { displayRole } from '../utils/roleMapping';
 import { getSummonerIconUrl, handleSummonerIconError } from '../utils/summonerHelper';
+import { useSidebarContext } from '../contexts/SidebarContext';
 
 const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
+	const { setContextContent } = useSidebarContext();
 	// Use SWR hooks for data fetching (will use cache if preloadedData populated it)
 	const { draftData: draftDataSWR, isLoading: draftLoading, isError: draftError, isValidating: draftValidating } = useDraftAnalysis(teamId);
 	const { playerPools: playerPoolsSWR, isLoading: poolsLoading, isValidating: poolsValidating } = usePlayerChampionPools(teamId);
@@ -32,6 +34,133 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 		});
 	};
 
+	// Set sidebar context content with TOC
+	useEffect(() => {
+		const handleScrollToSection = (sectionId) => {
+			const element = document.getElementById(sectionId);
+			if (element) {
+				// Check if we're in comparison mode (horizontal scroll)
+				if (activeView === 'players' && playerViewMode === 'comparison') {
+					// For comparison view, scroll horizontally within the container
+					const container = element.closest('.overflow-x-auto');
+					if (container) {
+						const elementLeft = element.offsetLeft;
+						container.scrollTo({
+							left: elementLeft - 20, // 20px padding
+							behavior: 'smooth'
+						});
+					}
+				} else {
+					// For other views, scroll vertically as normal
+					element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}
+		};
+
+		// Helper to get sorted players for sidebar
+		const getSortedPlayersForSidebar = () => {
+			if (!playerPools || !playerPools.players) return [];
+
+			const roleOrder = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+			let sortedPlayers = [...playerPools.players];
+
+			// If we have predictions, sort first 5 by predicted lineup ORDER
+			if (predictions && predictions.length > 0 && predictions[0].predicted_lineup) {
+				const predictedLineup = predictions[0].predicted_lineup;
+				const predictedPlayerOrder = {};
+
+				roleOrder.forEach((role, idx) => {
+					const playerId = predictedLineup[role]?.player_id;
+					if (playerId) {
+						predictedPlayerOrder[playerId] = idx;
+					}
+				});
+
+				const predictedPlayers = [];
+				const otherPlayers = [];
+
+				sortedPlayers.forEach((player) => {
+					if (player.player_id in predictedPlayerOrder) {
+						predictedPlayers.push(player);
+					} else {
+						otherPlayers.push(player);
+					}
+				});
+
+				predictedPlayers.sort((a, b) => {
+					const aOrder = predictedPlayerOrder[a.player_id];
+					const bOrder = predictedPlayerOrder[b.player_id];
+					return aOrder - bOrder;
+				});
+
+				otherPlayers.sort((a, b) => {
+					const aIndex = roleOrder.indexOf(a.role);
+					const bIndex = roleOrder.indexOf(b.role);
+					return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+				});
+
+				sortedPlayers = [...predictedPlayers, ...otherPlayers];
+			} else {
+				sortedPlayers.sort((a, b) => {
+					const aIndex = roleOrder.indexOf(a.role);
+					const bIndex = roleOrder.indexOf(b.role);
+					return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+				});
+			}
+
+			return sortedPlayers;
+		};
+
+		const tocContent = (
+			<div className="space-y-4">
+				<h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">
+					On This Page
+				</h3>
+				<nav className="space-y-1.5">
+					{activeView === 'team' ? (
+						<>
+							<button
+								onClick={() => handleScrollToSection('team-champion-pool')}
+								className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+							>
+								Team Champion Pool
+							</button>
+							<button
+								onClick={() => handleScrollToSection('ban-analysis')}
+								className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+							>
+								Bans
+							</button>
+						</>
+					) : (
+						// Player Champion Pools View - Show individual players
+						getSortedPlayersForSidebar().map((player) => (
+							<button
+								key={player.player_id}
+								onClick={() => handleScrollToSection(`player-${player.player_id}`)}
+								className="block w-full text-left text-sm text-text-secondary hover:text-primary hover:translate-x-1 transition-all duration-200 px-3 py-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20"
+							>
+								<div className="flex items-center gap-2">
+									<span className="truncate font-medium">{player.player_name}</span>
+									{player.role && player.role !== "UNKNOWN" && (
+										<span className="text-xs text-text-muted">
+											{displayRole(player.role)}
+										</span>
+									)}
+								</div>
+							</button>
+						))
+					)}
+				</nav>
+			</div>
+		);
+
+		setContextContent(tocContent);
+
+		// Cleanup on unmount
+		return () => setContextContent(null);
+	}, [setContextContent, activeView, playerViewMode, playerPools, predictions]);
+
 	// Show skeleton on initial load (skip if we have preloaded data)
 	if (!preloadedData && (draftLoading || poolsLoading)) {
 		return <ChampionPoolSkeleton />;
@@ -55,7 +184,6 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 		team_champion_pool,
 		favorite_bans,
 		bans_against,
-		first_pick_priority,
 		side_performance,
 		matches_analyzed,
 	} = draftData;
@@ -64,53 +192,13 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
       <div className="space-y-6">
         {/* Header Info */}
         <div className="card bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="text-center md:text-left flex-1">
-              <h2 className="text-lg md:text-xl font-bold text-text-primary mb-1">
-                Champion Pool & Draft Patterns
-              </h2>
-              <p className="text-sm text-text-secondary">
-                Based on {matches_analyzed} matches analyzed
-              </p>
-            </div>
-            {side_performance && (
-              <div className="flex gap-4 md:gap-6">
-                <div className="text-center">
-                  <div className="text-xs md:text-sm text-text-muted mb-1">
-                    Blue Side
-                  </div>
-                  <div
-                    className={`text-base md:text-lg font-bold ${
-                      side_performance.blue.winrate >= 50
-                        ? "text-success"
-                        : "text-error"
-                    }`}
-                  >
-                    {side_performance.blue.winrate.toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-secondary">
-                    {side_performance.blue.wins}-{side_performance.blue.losses}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs md:text-sm text-text-muted mb-1">
-                    Red Side
-                  </div>
-                  <div
-                    className={`text-base md:text-lg font-bold ${
-                      side_performance.red.winrate >= 50
-                        ? "text-success"
-                        : "text-error"
-                    }`}
-                  >
-                    {side_performance.red.winrate.toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-text-secondary">
-                    {side_performance.red.wins}-{side_performance.red.losses}
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="text-center md:text-left">
+            <h2 className="text-lg md:text-xl font-bold text-text-primary mb-1">
+              Champion Pool & Draft Patterns
+            </h2>
+            <p className="text-sm text-text-secondary">
+              Based on {matches_analyzed} matches analyzed
+            </p>
           </div>
         </div>
 
@@ -148,7 +236,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
         {activeView === "team" && (
           <>
             {/* Team Champion Pool */}
-            <div className="card">
+            <div id="team-champion-pool" className="card scroll-mt-20">
               <h3 className="text-base md:text-lg font-bold text-text-primary mb-3 md:mb-4 flex items-center gap-2">
                 <Target className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                 Team Champion Pool
@@ -264,22 +352,22 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-text-muted font-medium">
+                          <th className="text-left py-2 px-3 text-text-muted font-medium text-xs lg:text-sm">
                             Champion
                           </th>
-                          <th className="text-left py-2 px-3 text-text-muted font-medium">
+                          <th className="text-left py-2 px-3 text-text-muted font-medium hidden lg:table-cell text-xs lg:text-sm">
                             Player
                           </th>
-                          <th className="text-center py-2 px-3 text-text-muted font-medium">
+                          <th className="text-center py-2 px-3 text-text-muted font-medium text-xs lg:text-sm">
                             Picks
                           </th>
-                          <th className="text-center py-2 px-3 text-text-muted font-medium">
+                          <th className="text-center py-2 px-3 text-text-muted font-medium hidden lg:table-cell text-xs lg:text-sm">
                             Bans
                           </th>
-                          <th className="text-center py-2 px-3 text-text-muted font-medium">
+                          <th className="text-center py-2 px-3 text-text-muted font-medium text-xs lg:text-sm">
                             W-L
                           </th>
-                          <th className="text-center py-2 px-3 text-text-muted font-medium">
+                          <th className="text-center py-2 px-3 text-text-muted font-medium text-xs lg:text-sm">
                             Winrate
                           </th>
                         </tr>
@@ -305,19 +393,19 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                                   toggleChampion(champ.champion_id)
                                 }
                               >
-                                <td className="py-3 px-3">
+                                <td className="py-2 lg:py-3 px-2 lg:px-3">
                                   <div className="flex items-center gap-2">
                                     {/* Fixed width container for chevron - always present */}
                                     <div className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
                                       {hasMultiplePlayers &&
                                         (isExpanded ? (
-                                          <ChevronDown className="w-4 h-4 text-primary" />
+                                          <ChevronDown className="w-3 h-3 lg:w-4 lg:h-4 text-primary" />
                                         ) : (
-                                          <ChevronRight className="w-4 h-4 text-text-muted" />
+                                          <ChevronRight className="w-3 h-3 lg:w-4 lg:h-4 text-text-muted" />
                                         ))}
                                     </div>
                                     {champ.champion_icon && (
-                                      <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                                      <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-full overflow-hidden flex-shrink-0">
                                         <img
                                           src={champ.champion_icon}
                                           alt={champ.champion}
@@ -328,28 +416,42 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                                         />
                                       </div>
                                     )}
-                                    <span className="font-semibold text-text-primary">
-                                      {champ.champion}
-                                    </span>
+                                    <div className="flex flex-col lg:block">
+                                      <span className="font-semibold text-text-primary text-xs lg:text-sm">
+                                        {champ.champion}
+                                      </span>
+                                      {/* Player name inline on tablet, hidden on desktop (shown in separate column) */}
+                                      <span className="text-xs text-text-muted lg:hidden">
+                                        {champ.player || "N/A"}
+                                      </span>
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="py-3 px-3 text-text-secondary">
+                                {/* Player column - hidden on tablet, shown on desktop */}
+                                <td className="hidden lg:table-cell py-3 px-3 text-text-secondary text-sm">
                                   {champ.player || "N/A"}
                                 </td>
-                                <td className="py-3 px-3 text-center font-medium text-text-primary">
+                                <td className="py-2 lg:py-3 px-2 lg:px-3 text-center font-medium text-text-primary text-xs lg:text-sm">
                                   {champ.picks}
+                                  {/* Show bans inline on tablet */}
+                                  {champ.picks >= 1 && champ.bans_against > 0 && (
+                                    <span className="lg:hidden block text-xs text-error/80 font-normal mt-0.5">
+                                      {champ.bans_against} bans
+                                    </span>
+                                  )}
                                 </td>
-                                <td className="py-3 px-3 text-center font-medium text-error/80">
+                                {/* Bans column - hidden on tablet, shown on desktop */}
+                                <td className="hidden lg:table-cell py-3 px-3 text-center font-medium text-error/80 text-sm">
                                   {champ.picks >= 1 && champ.bans_against
                                     ? champ.bans_against
                                     : "-"}
                                 </td>
-                                <td className="py-3 px-3 text-center text-text-secondary">
+                                <td className="py-2 lg:py-3 px-2 lg:px-3 text-center text-text-secondary text-xs lg:text-sm">
                                   {champ.wins}-{champ.losses}
                                 </td>
-                                <td className="py-3 px-3 text-center">
+                                <td className="py-2 lg:py-3 px-2 lg:px-3 text-center">
                                   <span
-                                    className={`font-semibold ${
+                                    className={`font-semibold text-xs lg:text-sm ${
                                       champ.winrate >= 50
                                         ? "text-success"
                                         : "text-error"
@@ -363,7 +465,61 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                               {/* Expanded Player Details */}
                               {hasMultiplePlayers && isExpanded && (
                                 <tr className="bg-surface-lighter/50">
-                                  <td colSpan="6" className="px-3 py-4">
+                                  <td colSpan="4" className="lg:hidden px-3 py-4">
+                                    {/* Tablet view - 4 columns (Champion, Picks, W-L, Winrate) */}
+                                    <div className="ml-4 md:ml-8 space-y-2">
+                                      <p className="text-xs font-semibold text-text-muted uppercase mb-3">
+                                        Player Details
+                                      </p>
+                                      <div className="grid grid-cols-1 gap-2">
+                                        {champ.players.map((player) => (
+                                          <div
+                                            key={player.player_id}
+                                            className="flex items-center justify-between p-2 md:p-3 bg-surface/40 rounded-lg border border-border/50"
+                                          >
+                                            <div className="flex items-center gap-2 md:gap-3">
+                                              <span className="font-medium text-text-primary text-xs md:text-sm">
+                                                {player.player_name}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 md:gap-6 text-xs md:text-sm">
+                                              <div className="text-center">
+                                                <p className="font-medium text-text-primary">
+                                                  {player.picks}
+                                                </p>
+                                                <p className="text-xs text-text-muted">
+                                                  Picks
+                                                </p>
+                                              </div>
+                                              <div className="text-center">
+                                                <p className="text-text-secondary text-xs md:text-sm">
+                                                  {player.wins}-{player.losses}
+                                                </p>
+                                                <p className="text-xs text-text-muted">
+                                                  W-L
+                                                </p>
+                                              </div>
+                                              <div className="text-center">
+                                                <p
+                                                  className={`font-semibold ${
+                                                    player.winrate >= 50
+                                                      ? "text-success"
+                                                      : "text-error"
+                                                  }`}
+                                                >
+                                                  {player.winrate.toFixed(1)}%
+                                                </p>
+                                                <p className="text-xs text-text-muted">
+                                                  WR
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td colSpan="6" className="hidden lg:table-cell px-3 py-4">
                                     <div className="ml-8 space-y-2">
                                       <p className="text-xs font-semibold text-text-muted uppercase mb-3">
                                         Player Details
@@ -434,7 +590,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 
             {/* Ban Analysis */}
             {(favorite_bans || bans_against) && (
-              <div className="card">
+              <div id="ban-analysis" className="card scroll-mt-20">
                 <h3 className="text-lg font-bold text-text-primary mb-6 flex items-center gap-2">
                   <Ban className="w-5 h-5 text-error" />
                   Ban Analysis
@@ -748,7 +904,7 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
 
         {/* Player Champion Pools View */}
         {activeView === "players" && (
-          <div className="card">
+          <div id="player-pools" className="card scroll-mt-20">
             <div className="flex flex-col gap-4 mb-6">
               <div className="text-center md:text-left">
                 <h3 className="text-base md:text-lg font-bold text-text-primary mb-2 flex items-center justify-center md:justify-start gap-2">
@@ -797,10 +953,58 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
               </p>
             ) : playerViewMode === "overview" ? (
               <div className="space-y-6">
-                {playerPools.players.map((player) => (
-                  <div key={player.player_id} className="space-y-3">
-                    {/* Player Header */}
-                    <div className="flex items-center gap-3 pb-2 border-b border-border/50">
+                {(() => {
+                  // Sort players same way as in sidebar
+                  const roleOrder = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+                  let sortedPlayers = [...playerPools.players];
+
+                  if (predictions && predictions.length > 0 && predictions[0].predicted_lineup) {
+                    const predictedLineup = predictions[0].predicted_lineup;
+                    const predictedPlayerOrder = {};
+
+                    roleOrder.forEach((role, idx) => {
+                      const playerId = predictedLineup[role]?.player_id;
+                      if (playerId) {
+                        predictedPlayerOrder[playerId] = idx;
+                      }
+                    });
+
+                    const predictedPlayers = [];
+                    const otherPlayers = [];
+
+                    sortedPlayers.forEach((player) => {
+                      if (player.player_id in predictedPlayerOrder) {
+                        predictedPlayers.push(player);
+                      } else {
+                        otherPlayers.push(player);
+                      }
+                    });
+
+                    predictedPlayers.sort((a, b) => {
+                      const aOrder = predictedPlayerOrder[a.player_id];
+                      const bOrder = predictedPlayerOrder[b.player_id];
+                      return aOrder - bOrder;
+                    });
+
+                    otherPlayers.sort((a, b) => {
+                      const aIndex = roleOrder.indexOf(a.role);
+                      const bIndex = roleOrder.indexOf(b.role);
+                      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+                    });
+
+                    sortedPlayers = [...predictedPlayers, ...otherPlayers];
+                  } else {
+                    sortedPlayers.sort((a, b) => {
+                      const aIndex = roleOrder.indexOf(a.role);
+                      const bIndex = roleOrder.indexOf(b.role);
+                      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+                    });
+                  }
+
+                  return sortedPlayers.map((player) => (
+                    <div key={player.player_id} id={`player-${player.player_id}`} className="space-y-3 scroll-mt-20">
+                      {/* Player Header */}
+                      <div className="flex items-center gap-3 pb-2 border-b border-border/50">
                       {/* Player Icon */}
                       <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-border/50">
                         <img
@@ -937,7 +1141,8 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                       </p>
                     )}
                   </div>
-                ))}
+                  ));
+                })()}
               </div>
             ) : (
               /* Comparison View - Players Side by Side */
@@ -1018,7 +1223,8 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                     return sortedPlayers.map((player, idx) => (
                       <div
                         key={player.player_id}
-                        className="flex-shrink-0"
+                        id={`player-${player.player_id}`}
+                        className="flex-shrink-0 scroll-mt-20"
                         style={{
                           width: "234px",
                           minWidth: "234px",
@@ -1078,27 +1284,38 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                                       </div>
                                     )}
                                     <div className="flex-1 min-w-0">
-                                      <p className="font-semibold text-text-primary text-sm truncate">
-                                        {champ.champion}
-                                      </p>
-                                      <div className="flex items-center gap-3 mt-1">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className="text-lg font-bold text-cyan-400">
-                                            {champ.games}
-                                          </span>
-                                          <span className="text-xs text-text-muted">
-                                            Games
-                                          </span>
-                                        </div>
+                                      {/* Champion + Games */}
+                                      <div className="flex items-baseline gap-2">
+                                        <p className="font-semibold text-text-primary text-sm truncate">
+                                          {champ.champion}
+                                        </p>
+                                        <span className="text-base font-bold text-cyan-400 whitespace-nowrap">
+                                          {champ.games}
+                                        </span>
+                                      </div>
+
+                                      {/* Winrate + Bans */}
+                                      <div className="flex items-center gap-2 mt-0.5">
                                         <span
-                                          className={`text-sm font-semibold ${
+                                          className={`text-xs font-semibold ${
                                             champ.winrate >= 50
-                                              ? "text-green-400/60"
-                                              : "text-red-400/60"
+                                              ? "text-success"
+                                              : "text-error"
                                           }`}
                                         >
-                                          {champ.winrate}%
+                                          {champ.winrate}% WR
                                         </span>
+                                        {champ.bans_against > 0 && (
+                                          <>
+                                            <span className="text-text-muted">•</span>
+                                            <div className="flex items-center gap-1">
+                                              <Ban className="w-3 h-3 text-error/70" />
+                                              <span className="text-xs font-medium text-error/90">
+                                                {champ.bans_against}
+                                              </span>
+                                            </div>
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>

@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { Search, X, ChevronLeft, ChevronRight, ChevronsDown, ChevronsUp, Lock } from 'lucide-react';
 import { CHAMPIONS, getChampionIcon, getChampionIconById } from '../../lib/championsComplete';
 import RoleIcon from '../RoleIcon';
-import { Link } from 'react-router-dom';
 import { getSummonerIconUrl, handleSummonerIconError } from '../../utils/summonerHelper';
 import useSWR from 'swr';
 
@@ -23,10 +22,23 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
   const [expandedSlots, setExpandedSlots] = useState({}); // Track which slots are expanded
   const [showAllPrios, setShowAllPrios] = useState(false); // Global toggle for all priorities
 
+  // Normalize string for search - remove special characters and accents
+  const normalizeSearchString = (str) => {
+    return str
+      .toLowerCase()
+      .normalize("NFD") // Decompose accented characters
+      .replace(/[\u0300-\u036f]/g, "") // Remove diacritics
+      .replace(/['\-\s.]/g, ""); // Remove apostrophes, hyphens, spaces, dots
+  };
+
   // Filter champions
   const filteredChampions = CHAMPIONS.filter(champ => {
-    if (searchQuery && !champ.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
+    if (searchQuery) {
+      const normalizedQuery = normalizeSearchString(searchQuery);
+      const normalizedName = normalizeSearchString(champ.name);
+      if (!normalizedName.includes(normalizedQuery)) {
+        return false;
+      }
     }
     if (selectedRoles.length > 0) {
       return selectedRoles.some(role => champ.roles?.includes(role));
@@ -371,7 +383,7 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
             )}
           </div>
 
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
             {displayRoster.roster.map((player) => (
               <PlayerCardWithChampionPool key={player.player_id} player={player} isLocked={isLocked} />
             ))}
@@ -393,8 +405,8 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
         </div>
       </div>
 
-      {/* Draft Layout */}
-      <div className="space-y-6">
+      {/* Desktop Draft Layout (lg+) */}
+      <div className="hidden lg:block space-y-6">
         {/* Team Names */}
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center">
@@ -747,25 +759,30 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
 
           {/* Champions Grid - Larger when collapsed, more compact when expanded */}
           <div
-            className={`bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-y-auto transition-all ${
+            className={`bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden transition-all ${
               showAllPrios
-                ? 'p-2 max-h-[500px] w-[500px]'
-                : 'p-4 max-h-[650px] w-[700px]'
+                ? 'max-h-[500px] w-[500px]'
+                : 'max-h-[650px] w-[700px]'
             }`}
-            onDragOver={handleDragOver}
-            onDrop={(e) => {
-              e.preventDefault();
-              // If dragging from a slot, remove the champion
-              if (draggedFromSlot) {
-                const { type, side, index } = draggedFromSlot;
-                removeChampion(type, side, index, draggedChampion.champion_id || draggedChampion.id);
-                setDraggedChampion(null);
-                setDraggedFromSlot(null);
-                setUpdateTrigger(prev => prev + 1);
-              }
-            }}
           >
-            <div className={`grid gap-2 ${showAllPrios ? 'grid-cols-7' : 'grid-cols-8'}`}>
+            <div
+              className={`overflow-y-auto h-full ${
+                showAllPrios ? 'max-h-[500px]' : 'max-h-[650px]'
+              }`}
+              onDragOver={handleDragOver}
+              onDrop={(e) => {
+                e.preventDefault();
+                // If dragging from a slot, remove the champion
+                if (draggedFromSlot) {
+                  const { type, side, index } = draggedFromSlot;
+                  removeChampion(type, side, index, draggedChampion.champion_id || draggedChampion.id);
+                  setDraggedChampion(null);
+                  setDraggedFromSlot(null);
+                  setUpdateTrigger(prev => prev + 1);
+                }
+              }}
+            >
+              <div className={`grid gap-2 ${showAllPrios ? 'grid-cols-7 p-2' : 'grid-cols-8 p-4'}`}>
               {filteredChampions.map(champion => (
                 <ChampionIcon
                   key={champion.id}
@@ -775,6 +792,7 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
                   isSelected={selectedChampion?.id === champion.id}
                 />
               ))}
+              </div>
             </div>
           </div>
 
@@ -870,6 +888,134 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
         </div>
       </div>
 
+      {/* Mobile & Tablet Layout (< lg) */}
+      <div className="lg:hidden space-y-4">
+        {/* Mobile: Accordion Style */}
+        <div className="md:hidden space-y-3">
+          <MobileAccordionSection
+            title="Blue Bans"
+            side="blue"
+            type="ban"
+            slots={scenario.blue_bans || []}
+            normalizeChampions={normalizeChampions}
+            onSlotClick={handleSlotClick}
+            onRemoveChampion={removeChampion}
+            selectedSlot={selectedSlot}
+            handleDragStart={handleDragStart}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+          />
+          <MobileAccordionSection
+            title="Red Bans"
+            side="red"
+            type="ban"
+            slots={scenario.red_bans || []}
+            normalizeChampions={normalizeChampions}
+            onSlotClick={handleSlotClick}
+            onRemoveChampion={removeChampion}
+            selectedSlot={selectedSlot}
+            handleDragStart={handleDragStart}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+          />
+          <MobileAccordionSection
+            title="Blue Picks"
+            side="blue"
+            type="pick"
+            slots={scenario.blue_picks || []}
+            normalizeChampions={normalizeChampions}
+            onSlotClick={handleSlotClick}
+            onRemoveChampion={removeChampion}
+            selectedSlot={selectedSlot}
+            handleDragStart={handleDragStart}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+          />
+          <MobileAccordionSection
+            title="Red Picks"
+            side="red"
+            type="pick"
+            slots={scenario.red_picks || []}
+            normalizeChampions={normalizeChampions}
+            onSlotClick={handleSlotClick}
+            onRemoveChampion={removeChampion}
+            selectedSlot={selectedSlot}
+            handleDragStart={handleDragStart}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
+          />
+        </div>
+
+        {/* Tablet: 2-Column Layout */}
+        <div className="hidden md:grid md:grid-cols-2 gap-4">
+          {/* Blue Side */}
+          <div className="space-y-4">
+            <h3 className="text-center text-lg font-bold text-blue-400">Blue Team</h3>
+            <TabletSection
+              title="Bans"
+              side="blue"
+              type="ban"
+              slots={scenario.blue_bans || []}
+              normalizeChampions={normalizeChampions}
+              onSlotClick={handleSlotClick}
+              onRemoveChampion={removeChampion}
+              selectedSlot={selectedSlot}
+            />
+            <TabletSection
+              title="Picks"
+              side="blue"
+              type="pick"
+              slots={scenario.blue_picks || []}
+              normalizeChampions={normalizeChampions}
+              onSlotClick={handleSlotClick}
+              onRemoveChampion={removeChampion}
+              selectedSlot={selectedSlot}
+            />
+          </div>
+
+          {/* Red Side */}
+          <div className="space-y-4">
+            <h3 className="text-center text-lg font-bold text-red-400">Red Team</h3>
+            <TabletSection
+              title="Bans"
+              side="red"
+              type="ban"
+              slots={scenario.red_bans || []}
+              normalizeChampions={normalizeChampions}
+              onSlotClick={handleSlotClick}
+              onRemoveChampion={removeChampion}
+              selectedSlot={selectedSlot}
+            />
+            <TabletSection
+              title="Picks"
+              side="red"
+              type="pick"
+              slots={scenario.red_picks || []}
+              normalizeChampions={normalizeChampions}
+              onSlotClick={handleSlotClick}
+              onRemoveChampion={removeChampion}
+              selectedSlot={selectedSlot}
+            />
+          </div>
+        </div>
+
+        {/* Champion Selector - Full Width on Mobile/Tablet */}
+        <div className="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-hidden">
+          <div className="overflow-y-auto max-h-[400px]">
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 p-3">
+              {filteredChampions.map(champion => (
+                <ChampionIcon
+                  key={champion.id}
+                  champion={champion}
+                  onClick={() => handleChampionPoolClick(champion)}
+                  isSelected={selectedChampion?.id === champion.id}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {selectedChampion && (
         <div className="text-center text-sm text-green-400 font-semibold">
           Champion selected: {selectedChampion.name} - Click a slot to place it
@@ -881,6 +1027,144 @@ export default function DraftBoard({ scenario, onUpdate, teamName, lockedRoster,
           Slot selected - Click champions to add priorities
         </div>
       )}
+    </div>
+  );
+}
+
+// Mobile Accordion Section Component
+function MobileAccordionSection({ title, side, type, slots, normalizeChampions, onSlotClick, onRemoveChampion, selectedSlot }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <div className="card">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between p-3"
+      >
+        <h4 className={`font-bold text-sm ${side === 'blue' ? 'text-blue-400' : 'text-red-400'}`}>
+          {title} ({slots.filter(s => s).length}/5)
+        </h4>
+        {isExpanded ? <ChevronsUp className="w-4 h-4" /> : <ChevronsDown className="w-4 h-4" />}
+      </button>
+
+      {isExpanded && (
+        <div className="px-3 pb-3 space-y-2">
+          {[0, 1, 2, 3, 4].map(index => {
+            const champions = normalizeChampions(slots[index]);
+            const isSelected = selectedSlot?.type === type && selectedSlot?.side === side && selectedSlot?.index === index;
+
+            return (
+              <div
+                key={index}
+                onClick={() => onSlotClick(type, side, index)}
+                className={`p-2 rounded-lg border-2 transition-all cursor-pointer ${
+                  isSelected
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-primary/50'
+                }`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-text-muted font-medium">#{index + 1}</span>
+                  {champions.length === 0 ? (
+                    <span className="text-xs text-text-muted italic">Empty</span>
+                  ) : (
+                    champions.map((champ, pIdx) => (
+                      <div key={pIdx} className="relative group">
+                        <div className="w-8 h-8 rounded overflow-hidden border border-border">
+                          <img
+                            src={getChampionIconById(champ.champion_id)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveChampion(type, side, index, champ.champion_id);
+                          }}
+                          className="absolute -top-1 -right-1 w-4 h-4 bg-error rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3 text-white" />
+                        </button>
+                        {champ.priority && (
+                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                            {champ.priority}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tablet Section Component
+function TabletSection({ title, side, type, slots, normalizeChampions, onSlotClick, onRemoveChampion, selectedSlot }) {
+  return (
+    <div className="card">
+      <h4 className={`font-bold text-sm mb-3 ${side === 'blue' ? 'text-blue-400' : 'text-red-400'}`}>
+        {title} ({slots.filter(s => s).length}/5)
+      </h4>
+
+      <div className="space-y-2">
+        {[0, 1, 2, 3, 4].map(index => {
+          const champions = normalizeChampions(slots[index]);
+          const isSelected = selectedSlot?.type === type && selectedSlot?.side === side && selectedSlot?.index === index;
+
+          return (
+            <div
+              key={index}
+              onClick={() => onSlotClick(type, side, index)}
+              className={`p-2 rounded-lg border-2 transition-all cursor-pointer ${
+                isSelected
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border hover:border-primary/50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted font-medium w-6">#{index + 1}</span>
+                <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                  {champions.length === 0 ? (
+                    <span className="text-xs text-text-muted italic">Empty</span>
+                  ) : (
+                    champions.map((champ, pIdx) => (
+                      <div key={pIdx} className="relative group">
+                        <div className="w-10 h-10 rounded overflow-hidden border border-border">
+                          <img
+                            src={getChampionIconById(champ.champion_id)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveChampion(type, side, index, champ.champion_id);
+                          }}
+                          className="absolute -top-1 -right-1 w-5 h-5 bg-error rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3 text-white" />
+                        </button>
+                        {champ.priority && (
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                            {champ.priority}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1254,8 +1538,7 @@ function PlayerCardWithChampionPool({ player, isLocked = true }) {
   const division = player.soloq_division;
 
   return (
-    <Link
-      to={`/players/${player.player_id}`}
+    <div
       className={`rounded-lg p-3 transition-all group relative ${
         isLocked
           ? 'bg-slate-800/50 border border-purple-500/30 hover:border-purple-500 hover:bg-slate-800/70'
@@ -1308,45 +1591,54 @@ function PlayerCardWithChampionPool({ player, isLocked = true }) {
         </div>
       </div>
 
-      {/* Champion Pool Popup */}
+      {/* Champion Pool Popup with invisible bridge */}
       {showChampionPool && (
-        <div className={`absolute left-0 top-full mt-2 bg-slate-900 border-2 rounded-lg p-3 shadow-xl z-50 w-full overflow-y-auto ${
-          isLocked
-            ? 'border-purple-500/50 shadow-purple-500/20'
-            : 'border-yellow-500/50 shadow-yellow-500/20'
-        }`} style={{ maxHeight: '290px' }}>
-          <div className={`text-xs font-semibold mb-2 ${isLocked ? 'text-purple-300' : 'text-yellow-300'}`}>Champion Pool (PL)</div>
-          {isLoading ? (
-            <div className="text-xs text-slate-400">Loading...</div>
-          ) : championPool.length > 0 ? (
-            <div className="space-y-2">
-              {championPool.map((champ, idx) => (
-                <div key={champ.champion_id || idx} className="flex items-center gap-2 bg-slate-800/50 rounded p-2">
-                  <img
-                    src={getChampionIconById(champ.champion_id)}
-                    alt={champ.champion_name}
-                    className="w-8 h-8 rounded"
-                    onError={(e) => {
-                      console.error('Failed to load champion icon:', champ.champion_id, champ.champion_name);
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-white truncate">
-                      {champ.champion_name}
-                    </div>
-                    <div className="text-[10px] text-slate-400">
-                      {champ.games_played} games • {champ.winrate?.toFixed(0) || 0}% WR
-                    </div>
+        <>
+          {/* Invisible bridge area between card and dropdown */}
+          <div className="absolute left-0 top-full w-full h-2 z-40"></div>
+
+          <div className={`absolute left-0 top-full mt-2 bg-slate-900 border-2 rounded-lg shadow-xl z-50 w-full overflow-hidden ${
+            isLocked
+              ? 'border-purple-500/50 shadow-purple-500/20'
+              : 'border-yellow-500/50 shadow-yellow-500/20'
+          }`} style={{ maxHeight: '290px' }}>
+            <div className="overflow-y-auto h-full max-h-[290px]">
+              <div className="p-3">
+                <div className={`text-xs font-semibold mb-2 ${isLocked ? 'text-purple-300' : 'text-yellow-300'}`}>Champion Pool (PL)</div>
+                {isLoading ? (
+                  <div className="text-xs text-slate-400">Loading...</div>
+                ) : championPool.length > 0 ? (
+                  <div className="space-y-2">
+                    {championPool.map((champ, idx) => (
+                      <div key={champ.champion_id || idx} className="flex items-center gap-2 bg-slate-800/50 rounded p-2">
+                        <img
+                          src={getChampionIconById(champ.champion_id)}
+                          alt={champ.champion_name}
+                          className="w-8 h-8 rounded"
+                          onError={(e) => {
+                            console.error('Failed to load champion icon:', champ.champion_id, champ.champion_name);
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-white truncate">
+                            {champ.champion_name}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {champ.games_played} games • {champ.winrate?.toFixed(0) || 0}% WR
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
+                ) : (
+                  <div className="text-xs text-slate-400">No data available</div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="text-xs text-slate-400">No data available</div>
-          )}
-        </div>
+          </div>
+        </>
       )}
-    </Link>
+    </div>
   );
 }
