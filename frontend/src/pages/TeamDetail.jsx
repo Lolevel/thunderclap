@@ -35,12 +35,14 @@ import TeamLogo from '../components/TeamLogo';
 import { triggerTeamRefresh } from '../lib/api';
 import { useTeamSocket } from '../hooks/useTeamSocket';
 import { useImportTracking } from '../contexts/ImportContext';
+import { useSidebarContext } from '../contexts/SidebarContext';
 
 const TeamDetail = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const toast = useToast();
 	const { isImportingTeam, clearImportingTeam } = useImportTracking();
+	const { setContextContent } = useSidebarContext();
 
 	// OPTIMIZED: Fetch ALL team data in one request!
 	const {
@@ -86,7 +88,9 @@ const TeamDetail = () => {
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
 	const [deletingTeam, setDeletingTeam] = useState(false);
 	const [deletePlayersOption, setDeletePlayersOption] = useState(false);
+	const [tabsStuck, setTabsStuck] = useState(false);
 	const eventSourceRef = useRef(null);
+	const tabsRef = useRef(null);
 
 	// WebSocket integration for live refresh sync across all clients
 	useTeamSocket({
@@ -206,6 +210,25 @@ const TeamDetail = () => {
 
 	// REMOVED: useTeamRefreshStatus polling - we use SSE from RefreshProgressModal instead
 	// This prevents duplicate onComplete calls and toast spam
+
+	// Detect when tabs become sticky
+	useEffect(() => {
+		const handleScroll = () => {
+			if (tabsRef.current) {
+				const rect = tabsRef.current.getBoundingClientRect();
+				// Tabs are stuck when they're at the top position (64px from top = top-16)
+				const isStuck = rect.top <= 64;
+				setTabsStuck(isStuck);
+			}
+		};
+
+		window.addEventListener('scroll', handleScroll);
+		handleScroll(); // Check initial state
+
+		return () => {
+			window.removeEventListener('scroll', handleScroll);
+		};
+	}, []);
 
 	// Check on mount if a refresh is already running
 	useEffect(() => {
@@ -642,8 +665,13 @@ const TeamDetail = () => {
 					</div>
 				</div>
 
-				{/* Tabs - Full width icons on mobile, normal tabs on desktop */}
-				<div className="border-b border-slate-700/50 -mx-3 sm:-mx-4 md:mx-0">
+				{/* Tabs - Full width icons on mobile, normal tabs on desktop - STICKY */}
+				<div
+					ref={tabsRef}
+					className={`sticky top-16 z-20 border-b border-slate-700/50 -mx-3 sm:-mx-4 md:mx-0 transition-all duration-200 ${
+						tabsStuck ? 'bg-background/100 backdrop-blur-xs rounded-b-lg' : ''
+					}`}
+				>
 					{/* Mobile: Icon-only tabs spanning full width */}
 					<nav className="sm:hidden flex justify-around">
 						{[

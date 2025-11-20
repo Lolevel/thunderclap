@@ -1309,8 +1309,8 @@ const ChampionPoolTab = ({ teamId, predictions, preloadedData }) => {
                                           <>
                                             <span className="text-text-muted">•</span>
                                             <div className="flex items-center gap-1">
-                                              <Ban className="w-3 h-3 text-error/70" />
-                                              <span className="text-xs font-medium text-error/90">
+                                              <Ban className="w-3 h-3 text-slate-400" />
+                                              <span className="text-xs font-medium text-slate-400">
                                                 {champ.bans_against}
                                               </span>
                                             </div>
