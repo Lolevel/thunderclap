@@ -12,6 +12,7 @@ from .champion import Champion
 from .access_token import AccessToken
 from .game_prep import GamePrepRoster, DraftScenario, GamePrepComment
 from .team_refresh_status import TeamRefreshStatus
+from .schedule import AvailabilityWeek, PlayerAvailability, ScrimBlock, TeamEvent, ScrimDraftPrep
 
 __all__ = [
     "Team",
@@ -33,4 +34,9 @@ __all__ = [
     "DraftScenario",
     "GamePrepComment",
     "TeamRefreshStatus",
+    "AvailabilityWeek",
+    "PlayerAvailability",
+    "ScrimBlock",
+    "TeamEvent",
+    "ScrimDraftPrep",
 ]

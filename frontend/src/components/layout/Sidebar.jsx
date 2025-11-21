@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, TrendingUp } from 'lucide-react';
+import { Home, Users, TrendingUp, CalendarDays } from 'lucide-react';
 import { useSidebarContext } from '../../contexts/SidebarContext';
 
 const Sidebar = () => {
@@ -10,6 +10,7 @@ const Sidebar = () => {
     { path: '/', icon: Home, label: 'Dashboard' },
     { path: '/teams', icon: Users, label: 'Teams' },
     { path: '/players', icon: TrendingUp, label: 'Players' },
+    { path: '/schedule', icon: CalendarDays, label: 'Schedule' },
   ];
 
   const isActive = (path) => {

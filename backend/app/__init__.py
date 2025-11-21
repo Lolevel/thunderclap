@@ -60,7 +60,7 @@ def create_app(config_name='development'):
          automatic_options=True)
 
     # Register blueprints
-    from app.routes import teams, players, scouting, matches, stats, analytics, champions, auth, game_prep
+    from app.routes import teams, players, scouting, matches, stats, analytics, champions, auth, game_prep, schedule
     app.register_blueprint(teams.bp)
     app.register_blueprint(players.bp)
     app.register_blueprint(scouting.bp)
@@ -70,6 +70,7 @@ def create_app(config_name='development'):
     app.register_blueprint(champions.champions_bp)  # NEW: Champions endpoints
     app.register_blueprint(auth.bp)  # NEW: Authentication endpoints
     app.register_blueprint(game_prep.bp)  # NEW: Game Prep (Phase-based draft system)
+    app.register_blueprint(schedule.bp)  # NEW: Team Schedule & Scrim Planning
 
     # Register WebSocket event handlers
     from app.routes import websocket  # Import to register event handlers

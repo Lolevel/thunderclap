@@ -998,16 +998,33 @@ def add_player_to_roster(team_id):
 
                 # Get ranked data
                 ranked_data = None
-                current_rank = None
+                soloq_tier = None
+                soloq_division = None
+                soloq_lp = 0
+                soloq_wins = 0
+                soloq_losses = 0
+                flexq_tier = None
+                flexq_division = None
+                flexq_lp = 0
+                flexq_wins = 0
+                flexq_losses = 0
+
                 if summoner_id:
                     ranked_data = riot_client.get_league_entries(summoner_id)
                     if ranked_data:
                         for entry in ranked_data:
                             if entry.get("queueType") == "RANKED_SOLO_5x5":
-                                tier = entry.get("tier", "")
-                                rank = entry.get("rank", "")
-                                current_rank = f"{tier} {rank}"
-                                break
+                                soloq_tier = entry.get("tier")
+                                soloq_division = entry.get("rank")
+                                soloq_lp = entry.get("leaguePoints", 0)
+                                soloq_wins = entry.get("wins", 0)
+                                soloq_losses = entry.get("losses", 0)
+                            elif entry.get("queueType") == "RANKED_FLEX_SR":
+                                flexq_tier = entry.get("tier")
+                                flexq_division = entry.get("rank")
+                                flexq_lp = entry.get("leaguePoints", 0)
+                                flexq_wins = entry.get("wins", 0)
+                                flexq_losses = entry.get("losses", 0)
 
                 # Create player
                 player = Player(
@@ -1015,7 +1032,17 @@ def add_player_to_roster(team_id):
                     summoner_name=display_name,
                     summoner_id=summoner_id,
                     profile_icon_id=summoner_data.get("profileIconId"),
-                    current_rank=current_rank,
+                    soloq_tier=soloq_tier,
+                    soloq_division=soloq_division,
+                    soloq_lp=soloq_lp,
+                    soloq_wins=soloq_wins,
+                    soloq_losses=soloq_losses,
+                    flexq_tier=flexq_tier,
+                    flexq_division=flexq_division,
+                    flexq_lp=flexq_lp,
+                    flexq_wins=flexq_wins,
+                    flexq_losses=flexq_losses,
+                    rank_last_updated=datetime.utcnow(),
                     region=current_app.config["RIOT_PLATFORM"],
                     last_active=datetime.utcnow(),
                 )

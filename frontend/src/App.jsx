@@ -8,6 +8,7 @@ import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Teams from './pages/Teams';
 import TeamDetail from './pages/TeamDetail';
+import TeamSchedule from './pages/TeamSchedule';
 import Players from './pages/Players';
 import PlayerDetail from './pages/PlayerDetail';
 import Login from './pages/Login';
@@ -37,6 +38,7 @@ function App() {
                 <Route path="teams/:id" element={<TeamDetail />} />
                 <Route path="players" element={<Players />} />
                 <Route path="players/:id" element={<PlayerDetail />} />
+                <Route path="schedule" element={<TeamSchedule />} />
               </Route>
             </Routes>
           </Router>

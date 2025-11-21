@@ -68,3 +68,85 @@ export const triggerTeamRefresh = (teamId) => {
 export const getTeamRefreshStatus = (teamId) => {
   return api.get(`/teams/${teamId}/refresh-status`);
 };
+
+// ============================================================
+// SCHEDULE APIs
+// ============================================================
+
+// Schedule APIs (no team_id - schedule is for the own team)
+export const getAvailabilityWeeks = (activeOnly = true) => {
+  return api.get('/schedule/availability/weeks', {
+    params: { active_only: activeOnly }
+  });
+};
+
+export const getAvailability = (weekId) => {
+  return api.get('/schedule/availability', {
+    params: { week_id: weekId }
+  });
+};
+
+export const createWeek = (year, weekNumber) => {
+  return api.post('/schedule/availability/week', {
+    year,
+    week_number: weekNumber
+  });
+};
+
+export const setAvailability = (data) => {
+  return api.post('/schedule/availability', data);
+};
+
+export const updateAvailability = (availabilityId, data) => {
+  return api.put(`/schedule/availability/${availabilityId}`, data);
+};
+
+export const deleteAvailability = (availabilityId) => {
+  return api.delete(`/schedule/availability/${availabilityId}`);
+};
+
+// Event APIs
+export const getEvents = (params = {}) => {
+  return api.get('/schedule/events', { params });
+};
+
+export const getEvent = (eventId) => {
+  return api.get(`/schedule/events/${eventId}`);
+};
+
+export const createEvent = (data) => {
+  return api.post('/schedule/events', data);
+};
+
+export const updateEvent = (eventId, data) => {
+  return api.put(`/schedule/events/${eventId}`, data);
+};
+
+export const deleteEvent = (eventId) => {
+  return api.delete(`/schedule/events/${eventId}`);
+};
+
+// Scrim APIs
+export const getScrims = (params = {}) => {
+  return api.get('/schedule/scrims', { params });
+};
+
+export const getScrim = (scrimId) => {
+  return api.get(`/schedule/scrims/${scrimId}`);
+};
+
+export const createScrim = (data) => {
+  return api.post('/schedule/scrims', data);
+};
+
+export const updateScrim = (scrimId, data) => {
+  return api.put(`/schedule/scrims/${scrimId}`, data);
+};
+
+export const deleteScrim = (scrimId) => {
+  return api.delete(`/schedule/scrims/${scrimId}`);
+};
+
+export const completeScrim = (scrimId, data) => {
+  return api.post(`/schedule/scrims/${scrimId}/complete`, data);
+};

@@ -48,7 +48,11 @@
       "Bash(do curl -s http://localhost:5000/api/teams/)",
       "Bash(git checkout backend/app/services/primeleague_scraper.py)",
       "Bash(awk '{print $NF}')",
-      "Bash(timeout 5 curl:*)"
+      "Bash(timeout 5 curl:*)",
+      "Bash(timeout 8 docker logs:*)",
+      "Bash(timeout 5 docker logs:*)",
+      "Bash(timeout 10 docker logs:*)",
+      "Bash(timeout 3 docker logs:*)"
     ],
     "deny": [],
     "ask": []

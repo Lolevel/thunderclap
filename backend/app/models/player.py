@@ -17,9 +17,8 @@ class Player(db.Model):
     puuid = db.Column(db.String(100), unique=True, nullable=False)
     # summoner_level removed - no longer needed
     profile_icon_id = db.Column(db.Integer)
-    current_rank = db.Column(db.String(20))  # Deprecated - use soloq_tier
-    current_lp = db.Column(db.Integer)  # Deprecated - use soloq_lp
-    peak_rank = db.Column(db.String(20))
+    # current_rank, current_lp, and peak_rank removed in migration 007
+    # Use soloq_tier/soloq_lp and flexq_tier/flexq_lp instead
 
     # Solo/Duo Queue rank
     soloq_tier = db.Column(db.String(20))  # IRON, BRONZE, SILVER, etc.
@@ -85,9 +84,6 @@ class Player(db.Model):
             'summoner_id': self.summoner_id,
             'puuid': self.puuid,
             'profile_icon_id': self.profile_icon_id,
-            'current_rank': self.current_rank,  # Deprecated
-            'current_lp': self.current_lp,  # Deprecated
-            'peak_rank': self.peak_rank,
             'soloq': {
                 'tier': self.soloq_tier,
                 'division': self.soloq_division,

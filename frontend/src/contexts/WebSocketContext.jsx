@@ -11,11 +11,10 @@ export function WebSocketProvider({ children }) {
   const { mutate } = useSWRConfig();
 
   useEffect(() => {
-    // TODO: WebSocket temporarily disabled until backend is implemented
-    console.log('[WebSocket] Disabled - Backend WebSocket server not yet implemented');
+    console.log('[WebSocket] Initializing WebSocket connection...');
 
     // Connect socket
-    // socket.connect();
+    socket.connect();
 
     // Connection status
     const handleConnect = () => {
@@ -28,8 +27,8 @@ export function WebSocketProvider({ children }) {
       console.log('[WebSocket] Disconnected');
     };
 
-    // socket.on('connect', handleConnect);
-    // socket.on('disconnect', handleDisconnect);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
 
     // TODO: All event listeners disabled until WebSocket backend is ready
     /*
@@ -114,12 +113,9 @@ export function WebSocketProvider({ children }) {
 
     // Cleanup
     return () => {
-      // socket.off('connect', handleConnect);
-      // socket.off('disconnect', handleDisconnect);
-      // socket.off('data:updated');
-      // socket.off('import:completed');
-      // socket.off('analysis:completed');
-      // socket.disconnect();
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.disconnect();
     };
   }, [mutate]);
 
